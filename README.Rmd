@@ -1,0 +1,32 @@
+---
+title: "README"
+author: "Justin Peabody"
+date: "2026-09-22"
+output: html_document
+---
+
+Welcome to the repository dedicated to my work as Database Manager for Loyola University Chicago's Community Local Engaged Air Research (CLEAR) lab during the 2026-2027 school year (my junior year of college). This is an on campus air quality research lab consisting of students from all majors, as well as faculty from Data Science and Environmental Science. The lab is a collaborative effort with the following goals:
+
+1) to install air pollution sensors from the PurpleAir, Clarity, and AirGradient companies in Chicago communities, especially underserved or marginalized communities lacking installations. 
+
+2) to continuously update and expand the lab's shared SQL database with historical pollution and ambient weather readings from new and previously installed sensors 
+
+3) To support community education regarding air pollution and its effects on public health
+
+4) To conduct original research using the data in the database, designing and implementing statistical and spatial models to optimize installation locations of new sensors 
+
+My work commenced on September 21, 2026. The bulk of my duties pertain to goal #2, but I will be involved in an original research project later in the school year (more on this later). 
+
+## Contents of this repository:
+
+- This README file
+
+- An R Markdown file containing the code I used to perform the database management tasks of my job (some is written by myself, and some is generated with syntactical assistance from ChatGPT, W3Schools, GeeksforGeeks, and other resources). For the purpose of documenting my work in an official occupation, when using outside resources for writing code, I will make a consistent point to more specifically state the source and the specific part of the syntax that was new to me than I did during my USRE summer research (which was aimed at orienting me with the database, the SQL queries and API requests used by the lab to update the database, and compiling previously documented code in light of a new schema I helped conceptualize and design, in which I used AI and W3Schools for syntactical assistance).
+
+
+
+
+
+
+
+
