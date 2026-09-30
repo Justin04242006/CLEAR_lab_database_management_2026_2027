@@ -1,0 +1,239 @@
+---
+title: "CLEAR_lab_database_management_codes"
+author: "Justin Peabody"
+date: "2026-09-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This file contains all the code I used to query and update the CLEAR lab air quality database during my role as CLEAR lab Database Manager during the 2026-2027 school year. The role commenced on September 21, 2026. 
+
+
+#September 2026
+
+
+### 9/21/26: 
+
+After orienting a fellow lab member with the updated database schema and the high level workflow of the R scripts used to update the Purpleair, Clarity, and Airgradient tables, the very first change I made was to update the sensor_activity_status column for each sensor company, so that it determined whether a sensor was active based on a period of time relative to the current date instead of relative to a fixed date.
+
+```{r, eval=FALSE, echo=FALSE}
+
+dbExecute(con, "ALTER TABLE Purpleair_sensor_information 
+          DROP COLUMN sensor_activity_status")
+dbExecute(con, "ALTER TABLE Purpleair_sensor_information 
+          ADD sensor_activity_status VARCHAR(50)")
+
+for (i in sensor_information$sensor_index) {
+
+  query <- "
+UPDATE Purpleair_sensor_information
+SET sensor_activity_status =
+    CASE
+      WHEN CAST(last_seen AS date) >= DATEADD(day, -30, CAST(GETDATE() AS DATE))
+        THEN 'Active'
+      ELSE 'Inactive'
+    END
+  WHERE sensor_index = ?"
+  
+  dbExecute(con, query, params = list(i))
+}
+
+```
+
+At the request of my supervisor, who was my mentor during my Summer 2026 USRE project, I investigated reported sparseness in Purpleair sensors' historical data during 2026. I did this by seeing which sensors pulled data during 2025 and which sensors pulled data during 2026, and then comparing those two sets of sensors. 
+
+```{r, eval=FALSE, echo=FALSE}
+
+
+PurpleAir_2026_data<-dbGetQuery(con, "SELECT * FROM Purpleair_air_history WHERE time_stamp > '2026-01-01 00:00:00'")
+
+
+Purpleair_sensors_2025<-dbGetQuery(con, "SELECT * FROM Purpleair_air_history WHERE time_stamp BETWEEN '2025-01-01 00:00:00' AND '2026-01-01 00:00:00'")
+
+#I then used the following (AI generated) code to get a list of sensors that a) were in the 2025 data but not the 2026 data, and b) were in the 2026 data but not the 2025 data. It is simply performing set comparisons between the two vectors of sensor indices. 
+
+unique(PurpleAir_2026_data$sensor_index[
+  !PurpleAir_2026_data$sensor_index %in% Purpleair_sensors_2025$sensor_index 
+])
+
+unique(Purpleair_sensors_2025$sensor_index[
+  !Purpleair_sensors_2025$sensor_index %in% PurpleAir_2026_data$sensor_index 
+])
+
+#At the time I ran this code on 9/21, the first set comparison printed nothing, indicating that all the sensors in the 2026 data were in the 2025 data. The second set comparison, however, revealed that 54 of the sensors in the 2025 data were not in the 2026 data. I wrote this list of sensors, along with the most recent timestamp of each sensor in the historical data, to a csv file to share with my supervisor.
+
+Purpleair_air_history<-dbGetQuery(con, "SELECT sensor_index, time_stamp FROM Purpleair_air_history")
+max_timestamp_by_index<-Purpleair_air_history%>%
+filter(sensor_index %in% c(151042, 151050, 251599, 233117, 220537, 220553, 220531, 220591, 220577, 221165, 220613, 220223, 220177,220209,220191, 220583, 220261, 137618, 193689, 193669, 220579, 220521, 193661, 179769, 244039, 244063, 95075, 244057, 244083, 36281, 180725, 265767,  43955, 45359, 51933, 96079, 96933, 124513, 124649, 124685, 124715, 124737, 133664, 137622, 144504, 147893, 148029, 150066, 171015, 169187, 185239, 186099, 187615, 203303))%>%
+group_by(sensor_index)%>%
+summarize(max_timestamp=max(time_stamp))
+
+write.csv(max_timestamp_by_index, "2025_PurpleAir_sensors_not_in_2026_data", row.names = FALSE)
+
+```
+
+
+### 9/24/26: 
+
+My supervisor then gave me a list of 4 Loyola owned Purpleair sensors that were not in the database, for which I downloaded metadata and historical data and updated the respective tables. 
+
+```{r}
+
+fields=c("date_created", "last_seen", "name", "location_type", "model", "hardware", "latitude", "longitude", "private")
+newdata <- getPurpleairSensors_debugged(apiReadKey=api_key, fields=fields) 
+
+#This was a version of the getPurpleairSensors function, which I had previously edited to pull additional metadata fields in order to match the schema of the Purpleair_sensor_information table (see the Week 2 section of my Summer_2026_Air_Quality_Research Github repository for details about this).
+
+newdata_new_sensors<-newdata%>%
+filter(sensor_index %in% c("309628", "309644", "304778", "304768"))
+newdata_new_sensors
+
+```
+
+Metadata for only 3 of the desired sensor indices was pulled from the API (the index 304778 was not). Regardless, I appended the metadata I could retrieve to the Purpleair_sensor_infromation table.
+
+```{r}
+
+dbWriteTable(
+  con,
+  name="Purpleair_sensor_information",
+  value=newdata_new_sensors, 
+  append=TRUE,
+  row.names=FALSE)
+
+#I then attempted to download historical data for all four sensors in my supervisor's list.
+
+api_key<-Sys.getenv("API_KEY")
+sensor_index <- c("309628", "309644", "304778", "304768")
+
+start_date <- "2024-01-01"
+end_date   <- "2026-09-24"
+average <- "60"  # hourly
+fields <- c(
+  "humidity",
+  "temperature",
+  "pressure",
+  "pm2.5_cf_1_a",
+  "pm2.5_cf_1_b",
+  "rssi"
+)
+
+historical_data <- getSensorHistory(
+  sensorIndex = sensor_index,
+  apiReadKey  = api_key,
+  startDate   = start_date,
+  endDate     = end_date,
+  average     = average,
+  fields      = fields
+)
+
+table(historical_data$sensor_index)
+
+
+```
+
+
+Not only did the API's historical data not contain readings for all 4 sensors, but the 3 sensors that did have historical readings (304768, 304778, and 309644) were a different set of 3 than the sensors that had metadata (304768, 309628,and 309644). This means that only 2 of the 4 sensors had both historical data and metadata, and of those 2, one had only 30 historical observations. Regardless, I updated the database with all the historical data  available at the time.
+
+```{r}
+
+dbWriteTable(con,
+             name="Purpleair_air_history",
+             value=historical_data, 
+             append=TRUE,
+             row.names=FALSE)
+
+```
+
+
+### 9/25/26:
+
+I downloaded historical Airgradient sensor data for 7/5/26-7/20/26 (the week with the worst air quality of the summer in the Chicago area and the week prior to that), in order to provide the data to two graduate students working in the lab, so they could use it for a co-location study.
+
+```{r}
+
+Sys.getenv("LUC_CLEAR_AIRGRADIENT_API_KEY")
+
+Airgradient_sensor_information<-dbGetQuery(con, "SELECT * FROM Airgradient_sensor_information")
+
+library(httr)
+library(jsonlite)
+library(dplyr)
+token=Sys.getenv("LUC_CLEAR_AIRGRADIENT_API_KEY")
+location_ids <- c("190848", "190849", "190850", "190851", "190852", "190853", "190854", "190855", "190856", "190857", "190858", "190859", "190860", "190861", "190862", "190863", "190864")
+
+all_data <- list()
+
+for (id in location_ids){
+  url <- paste0("https://api.airgradient.com/public/api/v1/locations/", id, "/measures/past")
+  
+  response <- GET(
+    url,
+    query = list(
+      token = token,
+      from = "2026-07-05",
+      to   = "2026-07-12")
+  )
+  
+  if (status_code(response) != 200) {
+    warning("Request failed for sensor ", id, " with status ", status_code(response))
+    next
+  }
+  
+  json_text <- content(response, as = "text", encoding = "UTF-8")
+  df <- fromJSON(json_text, flatten = TRUE)
+  
+  df$location_id <- id
+  
+  all_data[[id]] <- df
+}
+
+final_df_1 <- bind_rows(all_data)
+
+#Owing to the fact that Airgradient's API only allows a date range up to a week long for historical data requests, I had to perform two requests and then combine the resulting dataframes together.
+
+all_data_2 <- list()
+
+for (id in location_ids){
+  url <- paste0("https://api.airgradient.com/public/api/v1/locations/", id, "/measures/past")
+  
+  response <- GET(
+    url,
+    query = list(
+      token = token,
+      from = "2026-07-13",
+      to   = "2026-07-20")
+  )
+  
+  if (status_code(response) != 200) {
+    warning("Request failed for sensor ", id, " with status ", status_code(response))
+    next
+  }
+  
+  json_text <- content(response, as = "text", encoding = "UTF-8")
+  df <- fromJSON(json_text, flatten = TRUE)
+  
+  df$location_id <- id
+  
+  all_data_2[[id]] <- df
+}
+
+final_df_2 <- bind_rows(all_data_2)
+
+July_5_thru_20_Airgradient_data<-bind_rows(final_df_1, final_df_2)[ ,-27] #The 27th column is simply a repeat of the locationID field
+
+July_5_thru_20_Airgradient_Data<-write.csv(July_5_thru_20_Airgradient_data, file="July_5_thru_20_Airgradient_Data", row.names=FALSE)
+
+```
+
+
+### 9/30/26: downloading all Airgradient data between 7pm on 9/28 and 7pm on 9/30 for the co-location study
+
+
+
+
+
+
