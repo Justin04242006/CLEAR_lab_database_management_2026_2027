@@ -96,7 +96,7 @@ historical data and updated the respective tables.
 
 Metadata for only 3 of the desired sensor indices was pulled from the
 API (the index 304778 was not). Regardless, I appended the metadata I
-could retrieve to the Purpleair\_sensor\_infromation table.
+could retrieve to the Purpleair\_sensor\_information table.
 
     dbWriteTable(
       con,
