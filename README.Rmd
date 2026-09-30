@@ -15,7 +15,7 @@ Welcome to the repository dedicated to my work as Database Manager for Loyola Un
 
 4) To conduct original research using the data in the database, designing and implementing statistical and spatial models to optimize installation locations of new sensors 
 
-My work commenced on September 21, 2026. The bulk of my duties pertain to goal #2, but I will be involved in an original research project later in the school year (more on this later). 
+My work commenced on September 21, 2026, and the ability to fulfill this role was the reason I did the summer project within the USRE research program (see the repository Summer_2026_Air_Quality_Research). The bulk of my duties pertain to goal #2, but I will be involved in an original research project later in the school year (more on this later). 
 
 ## Contents of this repository:
 
