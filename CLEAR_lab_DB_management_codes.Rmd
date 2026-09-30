@@ -2,7 +2,7 @@
 title: "CLEAR_lab_database_management_codes"
 author: "Justin Peabody"
 date: "2026-09-22"
-output: html_document
+output: md_document
 ---
 
 ```{r setup, include=FALSE}
