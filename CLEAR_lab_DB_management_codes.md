@@ -227,6 +227,37 @@ study.
 
     July_5_thru_20_Airgradient_data<-bind_rows(final_df_1, final_df_2)[ ,-27] #The 27th column is simply a repeat of the locationID field
 
+    head(July_5_thru_20_Airgradient_data)
+
+    ##   locationId locationName pm01 pm02 pm10 pm01_corrected pm02_corrected
+    ## 1     190848  AG Indoor 1  4.5  9.5 11.3            4.5            9.1
+    ## 2     190848  AG Indoor 1  4.9  8.1  9.4            4.9            9.3
+    ## 3     190848  AG Indoor 1  5.3  9.3 11.4            5.3            9.4
+    ## 4     190848  AG Indoor 1  5.1  9.5 10.9            5.1            9.3
+    ## 5     190848  AG Indoor 1  4.7  9.1 10.1            4.7            9.3
+    ## 6     190848  AG Indoor 1  4.8  8.3 10.7            4.8            9.2
+    ##   pm10_corrected pm003Count atmp rhum rco2 atmp_corrected rhum_corrected
+    ## 1           11.3        569 26.6   68  424           26.6             68
+    ## 2            9.4        584 26.6   68  422           26.6             68
+    ## 3           11.4        590 26.6   68  423           26.6             68
+    ## 4           10.9        578 26.6   68  423           26.6             68
+    ## 5           10.1        580 26.6   69  423           26.6             69
+    ## 6           10.7        577 26.6   69  423           26.6             69
+    ##   rco2_corrected tvoc wifi                timestamp     serialno     model
+    ## 1            424 86.4  -84 2026-07-05T00:00:00.000Z 3cdc75bc1e88 I-9PSL-DE
+    ## 2            422 83.8  -84 2026-07-05T00:05:00.000Z 3cdc75bc1e88 I-9PSL-DE
+    ## 3            423 82.0  -83 2026-07-05T00:10:00.000Z 3cdc75bc1e88 I-9PSL-DE
+    ## 4            423 79.8  -84 2026-07-05T00:15:00.000Z 3cdc75bc1e88 I-9PSL-DE
+    ## 5            423 78.5  -84 2026-07-05T00:20:00.000Z 3cdc75bc1e88 I-9PSL-DE
+    ## 6            423 77.9  -84 2026-07-05T00:25:00.000Z 3cdc75bc1e88 I-9PSL-DE
+    ##   firmwareVersion tvocIndex noxIndex batteryVoltage panelVoltage datapoints
+    ## 1           3.7.0        92        1             NA           NA          5
+    ## 2           3.7.0        89        1             NA           NA          5
+    ## 3           3.7.0        87        1             NA           NA          5
+    ## 4           3.7.0        85        1             NA           NA          5
+    ## 5           3.7.0        83        1             NA           NA          5
+    ## 6           3.7.0        83        1             NA           NA          5
+
     July_5_thru_20_Airgradient_Data<-write.csv(July_5_thru_20_Airgradient_data, file="July_5_thru_20_Airgradient_Data", row.names=FALSE)
 
 ### 9/30/26: downloading all Airgradient data between 7pm on 9/28 and 7pm on 9/30 for the co-location study
