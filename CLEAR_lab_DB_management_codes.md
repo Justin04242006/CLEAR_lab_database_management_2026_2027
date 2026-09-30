@@ -227,6 +227,8 @@ study.
 
     July_5_thru_20_Airgradient_data<-bind_rows(final_df_1, final_df_2)[ ,-27] #The 27th column is simply a repeat of the locationID field
 
+    July_5_thru_20_Airgradient_Data<-write.csv(July_5_thru_20_Airgradient_data, file="July_5_thru_20_Airgradient_Data", row.names=FALSE)
+
     head(July_5_thru_20_Airgradient_data)
 
     ##   locationId locationName pm01 pm02 pm10 pm01_corrected pm02_corrected
@@ -257,7 +259,5 @@ study.
     ## 4           3.7.0        85        1             NA           NA          5
     ## 5           3.7.0        83        1             NA           NA          5
     ## 6           3.7.0        83        1             NA           NA          5
-
-    July_5_thru_20_Airgradient_Data<-write.csv(July_5_thru_20_Airgradient_data, file="July_5_thru_20_Airgradient_Data", row.names=FALSE)
 
 ### 9/30/26: downloading all Airgradient data between 7pm on 9/28 and 7pm on 9/30 for the co-location study
