@@ -260,4 +260,224 @@ study.
     ## 5           3.7.0        83        1             NA           NA          5
     ## 6           3.7.0        83        1             NA           NA          5
 
-### 9/30/26: downloading all Airgradient data between 7pm on 9/28 and 7pm on 9/30 for the co-location study
+### 9/30/26:
+
+downloading all historical data from PurpleAir sensors between 7pm on
+9/28 and 7pm on 9/30 for the co-location study (to use as a calibration
+time period)
+
+# 10/5/26:
+
+I attempted to add additional Airgradient sensors to the database based
+on a file sent by a former employee of the lab this past March (a former
+student who graduated in May 2026)
+
+    Airgradient_sensor_information<-dbGetQuery(con, "SELECT * FROM Airgradient_sensor_information")
+
+    library(httr)
+    library(jsonlite)
+    library(dplyr)
+    token <- Sys.getenv("LUC_CLEAR_AIRGRADIENT_API_KEY")
+    location_ids <- c("59983", "59297", "163250", "75775", "171390", "163298", "58933", "77131")
+
+    from_time = format(Sys.time() - 864000, "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
+    to_time   = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
+
+    all_data <- list()
+
+    for (id in location_ids){
+      url <- paste0("https://api.airgradient.com/public/api/v1/locations/", id, "/measures/past")
+      
+      response <- GET(
+        url,
+        query = list(
+          token = token,
+          from = from_time,
+          to   = to_time)
+      )
+      
+      if (status_code(response) != 200) {
+        warning("Request failed for sensor ", id, " with status ", status_code(response))
+        next
+      }
+      
+      json_text <- content(response, as = "text", encoding = "UTF-8")
+      df <- fromJSON(json_text, flatten = TRUE)
+      
+      df$location_id <- id
+      
+      all_data[[id]] <- df
+    }
+
+    Airgradient_chunk_1 <- bind_rows(all_data)
+
+None of these sensors contained any sensor metadata or historical data
+on the API. My supervisor told me to revisit this at a later point after
+she had done some investigating as to why this is the case.
+
+# 10/12/26:
+
+I downloaded PurpleAir sensor metadata and historical data based on a
+list of sensor indices my supervisor sent me, which existed on the
+Purpleair online map but not in the database (after updating all three
+databases with their respective update scripts). Some of these sensors
+are in the city of Chicago proper, while others are outside the city but
+within Cook County.
+
+My supervisor desired for all the sensors to appear in the metadata
+table, but to only add historical data from the Chicago city sensors
+(this means marking the Cook County sensors as inactive/not pulling in
+Chicago in the metadata table) in order to conserve API points every
+time the historical data is updated.
+
+    library(tidyverse)
+    New_sensors_to_add<-read_csv("~/Desktop/CLEAR lab database mangement 26-27/CLEAR_lab_database_work/purple air sensors.csv") #The csv file of new sensors my supervisor sent me
+
+    ## New names:
+    ## Rows: 43 Columns: 7
+    ## ── Column specification
+    ## ──────────────────────────────────────────────────────── Delimiter: "," chr
+    ## (2): name, Location dbl (3): sensor_index, longitude, latitude lgl (2): ...6,
+    ## ...7
+    ## ℹ Use `spec()` to retrieve the full column specification for this data. ℹ
+    ## Specify the column types or set `show_col_types = FALSE` to quiet this message.
+    ## • `` -> `...6`
+    ## • `` -> `...7`
+
+    sensor_indices<-c()
+    New_sensors_to_add<-New_sensors_to_add%>%
+    filter(sensor_index != 'NA') #The formatting of the csv file created an extra row at the bottom, which R filled with NA values
+    for (i in New_sensors_to_add$sensor_index){
+      sensor_indices<-c(sensor_indices, i)} 
+
+    fields=c("date_created", "last_seen", "name", "location_type", "model", "hardware", "latitude", "longitude", "private")
+    api_key<-Sys.getenv("PURPLE_AIR_API_KEY")
+    new_metadata<-getPurpleairSensors_debugged(apiReadKey = api_key, fields=fields)
+    new_metadata<-new_metadata%>%
+    filter(sensor_index %in% sensor_indices)
+
+I noticed that the metadata from the Purpleair API (once filtered to
+only include the sensor indices my supervisor desired to be added) had
+one less row than the file of new sensor indices (indicating that one of
+the sensors could not be retrieved from the API). I proceeded to find
+out which sensor was problematic in this way.
+
+    new_sensor_indices_retrieved<-new_metadata$sensor_index
+    print(New_sensors_to_add$sensor_index[which(!(New_sensors_to_add$sensor_index %in% new_sensor_indices_retrieved))])
+
+    ## [1] 171443
+
+The index 171443 was the sensor that was not in the downloaded metadata
+but was in the list of new sensors. I tried downloading this sensor’s
+metadata separately.
+
+    sensor_171443_metadata<-new_metadata%>%
+    filter(sensor_index==171443)
+    nrow(sensor_171443_metadata)
+
+    ## [1] 0
+
+This did not return any metadata for the sensor. I will add the other 41
+sensors to the database and notify my supervisor of this problematic
+individual.
+
+To append the metadata, I first needed to move the position of the
+‘private’ column after the ‘longitude’ column to match the structure of
+the database (AI helped me here; I had not seen this method before).
+
+    library(dplyr)
+    new_metadata <- new_metadata %>% relocate(private, .after = longitude)
+
+    new_metadata<-new_metadata%>%
+    mutate(temp_date_column=as.Date(last_seen))%>%
+    mutate(sensor_activity_status=case_when(
+      temp_date_column>=Sys.Date()-30 ~ "Active",
+      temp_date_column < Sys.Date()-30 ~ "Inactive"
+    ))
+
+My supervisor wanted the metadata for all these sensors, but didn’t want
+the historical data for the sensors located in the Cook County Suburbs.
+This meant I needed to set the sensor\_activity\_status column to
+Inactive for the sensor indices from the Cook County Suburbs so that the
+Purpleair 24 hour update script would only add historical data for the
+Chicago sensors (all of the sensors were currently Active based on their
+last\_seen date).
+
+    Non_Chicago_sensors<-New_sensors_to_add%>%
+    filter(Location != "Chicago")%>%
+    select(sensor_index)
+    Non_Chicago_sensor_indices<-Non_Chicago_sensors$sensor_index
+
+    new_metadata<-new_metadata%>%
+    left_join(New_sensors_to_add, by=c("sensor_index"="sensor_index"))
+
+    new_metadata<-new_metadata%>%
+    mutate(sensor_activity_status=case_when(
+      Location=="Chicago" ~ "Active",
+      Location=="Cook County Suburbs" ~ "Inactive (not pulling in Chicago)"
+    ))
+
+    New_metadata<-new_metadata%>%
+    select(sensor_index, date_created, last_seen, name.y, location_type, model, hardware, latitude.y, longitude.y, private, sensor_activity_status)
+    colnames(New_metadata)[4]="name"
+    colnames(New_metadata)[8]="latitude"
+    colnames(New_metadata)[9]="longitude"
+
+    dbWriteTable(
+      con,
+      name="Purpleair_sensor_information",
+      value=New_metadata, 
+      append=TRUE,
+      row.names=FALSE)
+
+    c<-dbGetQuery(con, "SELECT * FROM Purpleair_sensor_information")
+
+    #Now, I need to download and append the historical data for the Chicago sensors.
+
+    Chicago_Sensors<-New_sensors_to_add%>%
+    filter(Location=="Chicago")
+    Chicago_sensor_indices<-Chicago_Sensors$sensor_index #There are 23 such sensors
+
+    Sys.setenv(LUC_CLEAR_PURPLEAIR_API_KEY=api_key)
+    Sys.getenv("PURPLE_AIR_API_KEY")
+
+    api_key<-Sys.getenv("PURPLE_AIR_API_KEY") 
+    sensor_index<-Chicago_sensor_indices
+
+    start_date <- "2018-01-01"
+    end_date   <- "2026-10-12"
+    average <- "0" 
+    fields <- c(
+      "humidity",
+      "temperature",
+      "pressure",
+      "pm2.5_cf_1_a",
+      "pm2.5_cf_1_b",
+      "rssi"
+    )
+
+    historical_data <- getSensorHistory(
+      sensorIndex = sensor_index,
+      apiReadKey  = api_key,
+      startDate   = start_date,
+      endDate     = end_date,
+      fields      = fields,
+      average     = average
+    )
+
+    nrow(historical_data)
+
+    table(historical_data$sensor_index)
+
+    max(historical_data$time_stamp)
+
+    dbWriteTable(con,
+                 name="Purpleair_air_history",
+                 value=historical_data, 
+                 append=TRUE,
+                 row.names=FALSE)
+
+This appended 3,025,729 rows to Purpleair\_air\_history, with historical
+data from 23 additional sensors (at this point, 76 sensors were labeled
+as Active based on the 30 day moving threshold established a few weeks
+prior).
