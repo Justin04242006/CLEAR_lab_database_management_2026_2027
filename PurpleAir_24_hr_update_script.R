@@ -40,7 +40,7 @@ cat(
 )
 
 
-### 3.Fetch Live API Timestamps
+### 3.Fetch Live API metadata Timestamps and compare to metadata timestamps in database
 
 api_sensors_all <- get_sensors_data(x=as.integer(sensoridsvec), fields = c("last_seen"))
 
