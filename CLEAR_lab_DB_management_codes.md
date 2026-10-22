@@ -62,7 +62,7 @@ the 2026-2027 school year. The role commenced on September 21, 2026.
       TrustServerCertificate = "yes"
     )
 
-# September 2026
+\#September 2026
 
 ### 9/21/26:
 
@@ -157,8 +157,6 @@ study.
 
     Sys.getenv("LUC_CLEAR_AIRGRADIENT_API_KEY")
 
-    ## [1] "3dee03db-d2a7-443c-b8ba-85d2e7ebd8b1"
-
     Airgradient_sensor_information<-dbGetQuery(con, "SELECT * FROM Airgradient_sensor_information")
 
     library(httr)
@@ -229,48 +227,156 @@ study.
 
     July_5_thru_20_Airgradient_Data<-write.csv(July_5_thru_20_Airgradient_data, file="July_5_thru_20_Airgradient_Data", row.names=FALSE)
 
-    head(July_5_thru_20_Airgradient_data)
+### 9/30/26: downloading all Airgradient data between 7pm on 9/28 and 7pm on 9/30 for the co-location study
 
-    ##   locationId locationName pm01 pm02 pm10 pm01_corrected pm02_corrected
-    ## 1     190848  AG Indoor 1  4.5  9.5 11.3            4.5            9.1
-    ## 2     190848  AG Indoor 1  4.9  8.1  9.4            4.9            9.3
-    ## 3     190848  AG Indoor 1  5.3  9.3 11.4            5.3            9.4
-    ## 4     190848  AG Indoor 1  5.1  9.5 10.9            5.1            9.3
-    ## 5     190848  AG Indoor 1  4.7  9.1 10.1            4.7            9.3
-    ## 6     190848  AG Indoor 1  4.8  8.3 10.7            4.8            9.2
-    ##   pm10_corrected pm003Count atmp rhum rco2 atmp_corrected rhum_corrected
-    ## 1           11.3        569 26.6   68  424           26.6             68
-    ## 2            9.4        584 26.6   68  422           26.6             68
-    ## 3           11.4        590 26.6   68  423           26.6             68
-    ## 4           10.9        578 26.6   68  423           26.6             68
-    ## 5           10.1        580 26.6   69  423           26.6             69
-    ## 6           10.7        577 26.6   69  423           26.6             69
-    ##   rco2_corrected tvoc wifi                timestamp     serialno     model
-    ## 1            424 86.4  -84 2026-07-05T00:00:00.000Z 3cdc75bc1e88 I-9PSL-DE
-    ## 2            422 83.8  -84 2026-07-05T00:05:00.000Z 3cdc75bc1e88 I-9PSL-DE
-    ## 3            423 82.0  -83 2026-07-05T00:10:00.000Z 3cdc75bc1e88 I-9PSL-DE
-    ## 4            423 79.8  -84 2026-07-05T00:15:00.000Z 3cdc75bc1e88 I-9PSL-DE
-    ## 5            423 78.5  -84 2026-07-05T00:20:00.000Z 3cdc75bc1e88 I-9PSL-DE
-    ## 6            423 77.9  -84 2026-07-05T00:25:00.000Z 3cdc75bc1e88 I-9PSL-DE
-    ##   firmwareVersion tvocIndex noxIndex batteryVoltage panelVoltage datapoints
-    ## 1           3.7.0        92        1             NA           NA          5
-    ## 2           3.7.0        89        1             NA           NA          5
-    ## 3           3.7.0        87        1             NA           NA          5
-    ## 4           3.7.0        85        1             NA           NA          5
-    ## 5           3.7.0        83        1             NA           NA          5
-    ## 6           3.7.0        83        1             NA           NA          5
+    library(httr)
+    library(jsonlite)
+    library(dplyr)
+    token=Sys.getenv("LUC_CLEAR_AIRGRADIENT_API_KEY")
+    location_ids <- c("190848", "190849", "190850", "190851", "190852", "190853", "190854", "190855", "190856", "190857", "190858", "190859", "190860", "190861", "190862", "190863", "190864")
 
-### 9/30/26:
+    all_data_9_28_thru_30 <- list()
 
-downloading all historical data from PurpleAir sensors between 7pm on
-9/28 and 7pm on 9/30 for the co-location study (to use as a calibration
-time period)
+    for (id in location_ids){
+      url <- paste0("https://api.airgradient.com/public/api/v1/locations/", id, "/measures/past")
+      
+      response <- GET(
+        url,
+        query = list(
+          token = token,
+          from = "2026-09-27",
+          to   = "2026-10-01")
+      )
+      
+      if (status_code(response) != 200) {
+        warning("Request failed for sensor ", id, " with status ", status_code(response))
+        next
+      }
+      
+      json_text <- content(response, as = "text", encoding = "UTF-8")
+      df <- fromJSON(json_text, flatten = TRUE)
+      
+      df$location_id <- id
+      
+      all_data_9_28_thru_30[[id]] <- df
+    }
 
-# 10/5/26:
+    final_df <- bind_rows(all_data_9_28_thru_30)
 
-I attempted to add additional Airgradient sensors to the database based
-on a file sent by a former employee of the lab this past March (a former
-student who graduated in May 2026)
+    nrow(final_df)
+
+
+
+    New_airgradient_historical_data<-final_df%>%
+      select(location_id, locationName, timestamp, pm01, pm01_corrected, pm02, pm02_corrected, pm10, pm10_corrected, atmp, atmp_corrected, rhum, rhum_corrected, rco2, rco2_corrected, tvoc)
+
+    New_airgradient_historical_data$timestamp <- as.POSIXct(
+      New_airgradient_historical_data$timestamp,
+      format = "%Y-%m-%dT%H:%M:%OS",
+      tz = "UTC")
+
+    max(New_airgradient_historical_data$timestamp)
+    head(New_airgradient_historical_data$timestamp)
+    sum(is.na(New_airgradient_historical_data$timestamp))
+
+    New_airgradient_historical_data_filtered<-New_airgradient_historical_data%>%
+    filter(timestamp <= as.POSIXct("2026-09-30 19:00:00"))
+
+    max(New_airgradient_historical_data_filtered$timestamp)
+    class(New_airgradient_historical_data_filtered$timestamp)
+
+    cutoff_1 <- as.POSIXct(
+      "2026-09-30 19:00:00",
+      tz = "UTC"
+    )
+
+    cutoff_2 <- as.POSIXct(
+      "2026-09-28 17:00:00",
+      tz = "UTC"
+    )
+
+    New_airgradient_historical_data_filtered <-
+      New_airgradient_historical_data %>%
+      filter(timestamp <= cutoff_1 & timestamp >= cutoff_2)
+
+    max(New_airgradient_historical_data_filtered$timestamp)
+    min(New_airgradient_historical_data_filtered$timestamp)
+
+    Airgradient_calibration_data<-write.csv(New_airgradient_historical_data_filtered, file="Airgradient_sensor_calibration_data.csv", row.names=FALSE)
+
+    Airgradient_Calibration_data<-read_csv("~/Desktop/CLEAR lab database mangement 26-27/CLEAR_lab_database_work/Airgradient_sensor_calibration_data.csv")
+
+    nrow(Airgradient_Calibration_data)
+
+### 10/1/26: downloading historical data for four Purpleair sensors between 7pm on 9/28 and 7pm on 9/30 for the co-location study (to co locate with the Airgradient sensors)
+
+    api_key<-Sys.getenv("PURPLE_AIR_API_KEY")
+
+    sensor_index<-c("304768", "309628", "309644", "310423")
+
+
+    start_date <- "2026-09-28"
+    end_date   <- "2026-09-30"
+    average <- "0" 
+    fields <- c(
+      "humidity",
+      "temperature",
+      "pressure",
+      "pm2.5_cf_1_a",
+      "pm2.5_cf_1_b",
+      "rssi"
+    )
+
+    historical_data <- getSensorHistory(
+      sensorIndex = sensor_index,
+      apiReadKey  = api_key,
+      startDate   = start_date,
+      endDate     = end_date,
+      fields      = fields,
+      average     = average
+    )
+
+    ## Sensor 1 of 4 (ID: 304768), Interval: 2026-09-28 to 2026-09-30 Sensor 2 of 4
+    ## (ID: 309628), Interval: 2026-09-28 to 2026-09-30 Sensor 3 of 4 (ID: 309644),
+    ## Interval: 2026-09-28 to 2026-09-30 Sensor 4 of 4 (ID: 310423), Interval:
+    ## 2026-09-28 to 2026-09-30
+
+    nrow(historical_data)
+
+    ## [1] 7491
+
+    table(historical_data$sensor_index)
+
+    ## 
+    ## 304768 309628 309644 310423 
+    ##   2157   1591   2158   1585
+
+    max(historical_data$time_stamp)
+
+    ## [1] "2026-09-30 23:59:24"
+
+    historical_data<-historical_data%>%
+    filter(time_stamp >= "2026-09-28 18:58:00" & time_stamp <= "2026-09-30 19:02:00")
+
+    Purpleair_calibration_data<-write.csv(historical_data, file="Purple_air_sensor_calibration_data.csv", row.names=FALSE)
+
+    Purpleair_Calibration_data<-read_csv("~/Desktop/CLEAR lab database mangement 26-27/CLEAR_lab_database_work/Purple_air_sensor_calibration_data.csv")
+
+    ## Rows: 5760 Columns: 8
+    ## ── Column specification ────────────────────────────────────────────────────────
+    ## Delimiter: ","
+    ## dbl  (7): rssi, humidity, temperature, pressure, pm2.5_cf_1_a, pm2.5_cf_1_b,...
+    ## dttm (1): time_stamp
+    ## 
+    ## ℹ Use `spec()` to retrieve the full column specification for this data.
+    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+    nrow(Purpleair_Calibration_data)
+
+    ## [1] 5760
+
+\#10/5/26: adding additional Airgradient sensors to the database based
+on a file sent by a former student CLEAR lab employee several months ago
 
     Airgradient_sensor_information<-dbGetQuery(con, "SELECT * FROM Airgradient_sensor_information")
 
@@ -311,79 +417,59 @@ student who graduated in May 2026)
 
     Airgradient_chunk_1 <- bind_rows(all_data)
 
+
+
+    Airgradient_chunk_1
+
+    ## # A tibble: 8 × 1
+    ##   location_id
+    ##   <chr>      
+    ## 1 59983      
+    ## 2 59297      
+    ## 3 163250     
+    ## 4 75775      
+    ## 5 171390     
+    ## 6 163298     
+    ## 7 58933      
+    ## 8 77131
+
 None of these sensors contained any sensor metadata or historical data
 on the API. My supervisor told me to revisit this at a later point after
 she had done some investigating as to why this is the case.
 
-# 10/12/26:
+### 10/12/26: downloading PurpleAir data based on a list of sensor indices Dr. Whalen sent me (after updating all three databases with their respective update scripts). Some of these sensors are in the city of Chicago proper, while others are outside the city but within Cook County.
 
-I downloaded PurpleAir sensor metadata and historical data based on a
-list of sensor indices my supervisor sent me, which existed on the
-Purpleair online map but not in the database (after updating all three
-databases with their respective update scripts). Some of these sensors
-are in the city of Chicago proper, while others are outside the city but
-within Cook County.
-
-My supervisor desired for all the sensors to appear in the metadata
-table, but to only add historical data from the Chicago city sensors
-(this means marking the Cook County sensors as inactive/not pulling in
-Chicago in the metadata table) in order to conserve API points every
-time the historical data is updated.
+### Dr. Whalen wanted me to add all the sensors to the metadata table, but to only add historical data from the Chicago city sensors (this means marking the Cook County sensors as inactive/not pulling in Chicago in the metadata table).
 
     library(tidyverse)
-    New_sensors_to_add<-read_csv("~/Desktop/CLEAR lab database mangement 26-27/CLEAR_lab_database_work/purple air sensors.csv") #The csv file of new sensors my supervisor sent me
-
-    ## New names:
-    ## Rows: 43 Columns: 7
-    ## ── Column specification
-    ## ──────────────────────────────────────────────────────── Delimiter: "," chr
-    ## (2): name, Location dbl (3): sensor_index, longitude, latitude lgl (2): ...6,
-    ## ...7
-    ## ℹ Use `spec()` to retrieve the full column specification for this data. ℹ
-    ## Specify the column types or set `show_col_types = FALSE` to quiet this message.
-    ## • `` -> `...6`
-    ## • `` -> `...7`
-
+    New_sensors_to_add<-read_csv("~/Desktop/CLEAR lab database mangement 26-27/CLEAR_lab_database_work/purple air sensors.csv")
     sensor_indices<-c()
     New_sensors_to_add<-New_sensors_to_add%>%
-    filter(sensor_index != 'NA') #The formatting of the csv file created an extra row at the bottom, which R filled with NA values
+    filter(sensor_index != 'NA')
     for (i in New_sensors_to_add$sensor_index){
-      sensor_indices<-c(sensor_indices, i)} 
+      sensor_indices<-c(sensor_indices, i)}
+
 
     fields=c("date_created", "last_seen", "name", "location_type", "model", "hardware", "latitude", "longitude", "private")
     api_key<-Sys.getenv("PURPLE_AIR_API_KEY")
     new_metadata<-getPurpleairSensors_debugged(apiReadKey = api_key, fields=fields)
     new_metadata<-new_metadata%>%
     filter(sensor_index %in% sensor_indices)
-
-I noticed that the metadata from the Purpleair API (once filtered to
-only include the sensor indices my supervisor desired to be added) had
-one less row than the file of new sensor indices (indicating that one of
-the sensors could not be retrieved from the API). I proceeded to find
-out which sensor was problematic in this way.
+    Unknown_sensor<-New_sensors_to_add%>%
+    filter(sensor_index !in c(new_metadata$sensor_index))
 
     new_sensor_indices_retrieved<-new_metadata$sensor_index
     print(New_sensors_to_add$sensor_index[which(!(New_sensors_to_add$sensor_index %in% new_sensor_indices_retrieved))])
-
-    ## [1] 171443
-
-The index 171443 was the sensor that was not in the downloaded metadata
-but was in the list of new sensors. I tried downloading this sensor’s
-metadata separately.
+    #The index 171443 was not in the downloaded metadata. I will try downloading this sensor's metadata separately.
 
     sensor_171443_metadata<-new_metadata%>%
     filter(sensor_index==171443)
     nrow(sensor_171443_metadata)
+    #This did not return any metadata for the sensor. I will add the other 41 sensors to the database and discuss this pesky individual with Dr. Whalen.
 
-    ## [1] 0
+    colnames(new_metadata)
 
-This did not return any metadata for the sensor. I will add the other 41
-sensors to the database and notify my supervisor of this problematic
-individual.
-
-To append the metadata, I first needed to move the position of the
-‘private’ column after the ‘longitude’ column to match the structure of
-the database (AI helped me here; I had not seen this method before).
+    #Moving the 'private' column after the 'longitude' column to match the structure of the database (AI helped me here; I had not seen this method before)
 
     library(dplyr)
     new_metadata <- new_metadata %>% relocate(private, .after = longitude)
@@ -395,18 +481,13 @@ the database (AI helped me here; I had not seen this method before).
       temp_date_column < Sys.Date()-30 ~ "Inactive"
     ))
 
-My supervisor wanted the metadata for all these sensors, but didn’t want
-the historical data for the sensors located in the Cook County Suburbs.
-This meant I needed to set the sensor\_activity\_status column to
-Inactive for the sensor indices from the Cook County Suburbs so that the
-Purpleair 24 hour update script would only add historical data for the
-Chicago sensors (all of the sensors were currently Active based on their
-last\_seen date).
-
+    #We want the metadata for all these sensors, but we don't want the historical data for the non Chicago sensors.
     Non_Chicago_sensors<-New_sensors_to_add%>%
     filter(Location != "Chicago")%>%
     select(sensor_index)
     Non_Chicago_sensor_indices<-Non_Chicago_sensors$sensor_index
+
+    #This means I need to set the sensor_activity_status column to Inactive for the sensor indices from the Cook County Suburbs (all of the sensors are currently Active based on their last_seen date).
 
     new_metadata<-new_metadata%>%
     left_join(New_sensors_to_add, by=c("sensor_index"="sensor_index"))
@@ -438,11 +519,7 @@ last\_seen date).
     filter(Location=="Chicago")
     Chicago_sensor_indices<-Chicago_Sensors$sensor_index #There are 23 such sensors
 
-    Sys.setenv(LUC_CLEAR_PURPLEAIR_API_KEY=api_key)
-    Sys.getenv("PURPLE_AIR_API_KEY")
-
-    api_key<-Sys.getenv("PURPLE_AIR_API_KEY") 
-    sensor_index<-Chicago_sensor_indices
+    sensor_index=Chicago_sensor_indices
 
     start_date <- "2018-01-01"
     end_date   <- "2026-10-12"
@@ -477,7 +554,447 @@ last\_seen date).
                  append=TRUE,
                  row.names=FALSE)
 
-This appended 3,025,729 rows to Purpleair\_air\_history, with historical
-data from 23 additional sensors (at this point, 76 sensors were labeled
-as Active based on the 30 day moving threshold established a few weeks
-prior).
+This appended 3,025,729 rows to Purpleair\_air\_history.
+
+### 10/18/26: investigating the number of sensors reporting throughout 2026
+
+I investigating the trend in the number of sensors reporting data on
+each day throughout the year 2026 as a time series.
+
+    Purpleair_2026_historical_data<-dbGetQuery(con, "SELECT * FROM Purpleair_air_history WHERE time_stamp >= '2026-01-01 00:00:00'")
+
+    Purpleair_2026_investigation_data<-Purpleair_2026_historical_data%>%
+    mutate(Date=as.Date(time_stamp))%>%
+    arrange(Date)
+
+    Date_list<-as.Date(character())
+    Reporting_sensors_list<-c()
+
+    for(i in unique(Purpleair_2026_investigation_data$Date)){
+      new_data<-Purpleair_2026_investigation_data%>%
+      filter(Date==i)
+      Date_list<-c(Date_list, i)
+      print(i)
+      Num_distinct_reporting_sensors<-length(unique(new_data$sensor_index))
+      Reporting_sensors_list<-c(Reporting_sensors_list, Num_distinct_reporting_sensors)}
+
+    ## [1] 20454
+    ## [1] 20455
+    ## [1] 20456
+    ## [1] 20457
+    ## [1] 20458
+    ## [1] 20459
+    ## [1] 20460
+    ## [1] 20461
+    ## [1] 20462
+    ## [1] 20463
+    ## [1] 20464
+    ## [1] 20465
+    ## [1] 20466
+    ## [1] 20467
+    ## [1] 20468
+    ## [1] 20469
+    ## [1] 20470
+    ## [1] 20471
+    ## [1] 20472
+    ## [1] 20473
+    ## [1] 20474
+    ## [1] 20475
+    ## [1] 20476
+    ## [1] 20477
+    ## [1] 20478
+    ## [1] 20479
+    ## [1] 20480
+    ## [1] 20481
+    ## [1] 20482
+    ## [1] 20483
+    ## [1] 20484
+    ## [1] 20485
+    ## [1] 20486
+    ## [1] 20487
+    ## [1] 20488
+    ## [1] 20489
+    ## [1] 20490
+    ## [1] 20491
+    ## [1] 20492
+    ## [1] 20493
+    ## [1] 20494
+    ## [1] 20495
+    ## [1] 20496
+    ## [1] 20497
+    ## [1] 20498
+    ## [1] 20499
+    ## [1] 20500
+    ## [1] 20501
+    ## [1] 20502
+    ## [1] 20503
+    ## [1] 20504
+    ## [1] 20505
+    ## [1] 20506
+    ## [1] 20507
+    ## [1] 20508
+    ## [1] 20509
+    ## [1] 20510
+    ## [1] 20511
+    ## [1] 20512
+    ## [1] 20513
+    ## [1] 20514
+    ## [1] 20515
+    ## [1] 20516
+    ## [1] 20517
+    ## [1] 20518
+    ## [1] 20519
+    ## [1] 20520
+    ## [1] 20521
+    ## [1] 20522
+    ## [1] 20523
+    ## [1] 20524
+    ## [1] 20525
+    ## [1] 20526
+    ## [1] 20527
+    ## [1] 20528
+    ## [1] 20529
+    ## [1] 20530
+    ## [1] 20531
+    ## [1] 20532
+    ## [1] 20533
+    ## [1] 20534
+    ## [1] 20535
+    ## [1] 20536
+    ## [1] 20537
+    ## [1] 20538
+    ## [1] 20539
+    ## [1] 20540
+    ## [1] 20541
+    ## [1] 20542
+    ## [1] 20543
+    ## [1] 20544
+    ## [1] 20545
+    ## [1] 20546
+    ## [1] 20547
+    ## [1] 20548
+    ## [1] 20549
+    ## [1] 20550
+    ## [1] 20551
+    ## [1] 20552
+    ## [1] 20553
+    ## [1] 20554
+    ## [1] 20555
+    ## [1] 20556
+    ## [1] 20557
+    ## [1] 20558
+    ## [1] 20559
+    ## [1] 20560
+    ## [1] 20561
+    ## [1] 20562
+    ## [1] 20563
+    ## [1] 20564
+    ## [1] 20565
+    ## [1] 20566
+    ## [1] 20567
+    ## [1] 20568
+    ## [1] 20569
+    ## [1] 20570
+    ## [1] 20571
+    ## [1] 20572
+    ## [1] 20573
+    ## [1] 20574
+    ## [1] 20575
+    ## [1] 20576
+    ## [1] 20577
+    ## [1] 20578
+    ## [1] 20579
+    ## [1] 20580
+    ## [1] 20581
+    ## [1] 20582
+    ## [1] 20583
+    ## [1] 20584
+    ## [1] 20585
+    ## [1] 20586
+    ## [1] 20587
+    ## [1] 20588
+    ## [1] 20589
+    ## [1] 20590
+    ## [1] 20591
+    ## [1] 20592
+    ## [1] 20593
+    ## [1] 20594
+    ## [1] 20595
+    ## [1] 20596
+    ## [1] 20597
+    ## [1] 20598
+    ## [1] 20599
+    ## [1] 20600
+    ## [1] 20601
+    ## [1] 20602
+    ## [1] 20603
+    ## [1] 20604
+    ## [1] 20605
+    ## [1] 20606
+    ## [1] 20607
+    ## [1] 20608
+    ## [1] 20609
+    ## [1] 20610
+    ## [1] 20611
+    ## [1] 20612
+    ## [1] 20613
+    ## [1] 20614
+    ## [1] 20615
+    ## [1] 20616
+    ## [1] 20617
+    ## [1] 20618
+    ## [1] 20619
+    ## [1] 20620
+    ## [1] 20621
+    ## [1] 20622
+    ## [1] 20623
+    ## [1] 20624
+    ## [1] 20625
+    ## [1] 20626
+    ## [1] 20627
+    ## [1] 20628
+    ## [1] 20629
+    ## [1] 20630
+    ## [1] 20631
+    ## [1] 20632
+    ## [1] 20633
+    ## [1] 20634
+    ## [1] 20635
+    ## [1] 20636
+    ## [1] 20637
+    ## [1] 20638
+    ## [1] 20639
+    ## [1] 20640
+    ## [1] 20641
+    ## [1] 20642
+    ## [1] 20643
+    ## [1] 20644
+    ## [1] 20645
+    ## [1] 20646
+    ## [1] 20647
+    ## [1] 20648
+    ## [1] 20649
+    ## [1] 20650
+    ## [1] 20651
+    ## [1] 20652
+    ## [1] 20653
+    ## [1] 20654
+    ## [1] 20655
+    ## [1] 20656
+    ## [1] 20657
+    ## [1] 20658
+    ## [1] 20659
+    ## [1] 20660
+    ## [1] 20661
+    ## [1] 20662
+    ## [1] 20663
+    ## [1] 20664
+    ## [1] 20665
+    ## [1] 20666
+    ## [1] 20667
+    ## [1] 20668
+    ## [1] 20669
+    ## [1] 20670
+    ## [1] 20671
+    ## [1] 20672
+    ## [1] 20673
+    ## [1] 20674
+    ## [1] 20675
+    ## [1] 20676
+    ## [1] 20677
+    ## [1] 20678
+    ## [1] 20679
+    ## [1] 20680
+    ## [1] 20681
+    ## [1] 20682
+    ## [1] 20683
+    ## [1] 20684
+    ## [1] 20685
+    ## [1] 20686
+    ## [1] 20687
+    ## [1] 20688
+    ## [1] 20689
+    ## [1] 20690
+    ## [1] 20691
+    ## [1] 20692
+    ## [1] 20693
+    ## [1] 20694
+    ## [1] 20695
+    ## [1] 20696
+    ## [1] 20697
+    ## [1] 20698
+    ## [1] 20699
+    ## [1] 20700
+    ## [1] 20701
+    ## [1] 20702
+    ## [1] 20703
+    ## [1] 20704
+    ## [1] 20705
+    ## [1] 20706
+    ## [1] 20707
+    ## [1] 20708
+    ## [1] 20709
+    ## [1] 20710
+    ## [1] 20711
+    ## [1] 20712
+    ## [1] 20713
+    ## [1] 20714
+    ## [1] 20715
+    ## [1] 20716
+    ## [1] 20717
+    ## [1] 20718
+    ## [1] 20719
+    ## [1] 20720
+    ## [1] 20721
+    ## [1] 20722
+    ## [1] 20723
+    ## [1] 20724
+    ## [1] 20725
+    ## [1] 20726
+    ## [1] 20727
+    ## [1] 20728
+    ## [1] 20729
+    ## [1] 20730
+    ## [1] 20731
+    ## [1] 20732
+    ## [1] 20733
+    ## [1] 20734
+    ## [1] 20735
+    ## [1] 20736
+    ## [1] 20737
+    ## [1] 20738
+    ## [1] 20739
+    ## [1] 20740
+    ## [1] 20741
+    ## [1] 20742
+    ## [1] 20743
+    ## [1] 20744
+
+    dates_targeted_inquiry<-as.Date(character())
+    for (i in Date_list){
+      index=which(Date_list==i)
+      if (Reporting_sensors_list[index] <= 5){
+        dates_targeted_inquiry<-c(dates_targeted_inquiry, Date_list[index])}
+    }
+
+    ts_data_frame<-data.frame(Date=Date_list, Num_sensors_reporting=Reporting_sensors_list)
+
+    #Creating the time series
+
+    library(plotly)
+
+    ## Warning: package 'plotly' was built under R version 4.4.3
+
+    ## 
+    ## Attaching package: 'plotly'
+
+    ## The following object is masked from 'package:httr':
+    ## 
+    ##     config
+
+    ## The following object is masked from 'package:ggplot2':
+    ## 
+    ##     last_plot
+
+    ## The following object is masked from 'package:stats':
+    ## 
+    ##     filter
+
+    ## The following object is masked from 'package:graphics':
+    ## 
+    ##     layout
+
+    Purpleair_sensors_reporting<-plot_ly(data=ts_data_frame, x=~Date, y=~Num_sensors_reporting, type="scatter", mode="lines", col="blue")%>%
+    layout(yaxis=list(range=c(0,80)))
+    Purpleair_sensors_reporting
+
+    ## Warning: 'scatter' objects don't have these attributes: 'col'
+    ## Valid attributes include:
+    ## 'alignmentgroup', 'cliponaxis', 'connectgaps', 'customdata', 'customdatasrc', 'dx', 'dy', 'error_x', 'error_y', 'fill', 'fillcolor', 'fillpattern', 'groupnorm', 'hoverinfo', 'hoverinfosrc', 'hoverlabel', 'hoveron', 'hovertemplate', 'hovertemplatesrc', 'hovertext', 'hovertextsrc', 'ids', 'idssrc', 'legend', 'legendgroup', 'legendgrouptitle', 'legendrank', 'legendwidth', 'line', 'marker', 'meta', 'metasrc', 'mode', 'name', 'offsetgroup', 'opacity', 'orientation', 'selected', 'selectedpoints', 'showlegend', 'stackgaps', 'stackgroup', 'stream', 'text', 'textfont', 'textposition', 'textpositionsrc', 'textsrc', 'texttemplate', 'texttemplatesrc', 'transforms', 'type', 'uid', 'uirevision', 'unselected', 'visible', 'x', 'x0', 'xaxis', 'xcalendar', 'xhoverformat', 'xperiod', 'xperiod0', 'xperiodalignment', 'xsrc', 'y', 'y0', 'yaxis', 'ycalendar', 'yhoverformat', 'yperiod', 'yperiod0', 'yperiodalignment', 'ysrc', 'key', 'set', 'frame', 'transforms', '_isNestedKey', '_isSimpleKey', '_isGraticule', '_bbox'
+
+![](CLEAR_lab_DB_management_codes_files/figure-markdown_strict/unnamed-chunk-12-1.png)
+
+When I initially generated this plot, the line was at 1-3 sensors for
+the entire period from January 1 to June 1. I suspect this is because I
+initially set the sensor\_activity\_status column based on a static 30
+day threshold and only recently (on 9/21/26) changed the column
+definition to a moving 30 day threshold relative to the current date.
+
+Here is what the initial plot looked like:
+
+<img src="Initial_line_graph.png" alt="My Screenshot Caption" width="75%" />
+<p class="caption">
+My Screenshot Caption
+</p>
+
+I then backfilled the sensor data that was unaccounted for prior to me
+changing the column definition (going up to the current date just to be
+safe).
+
+    vec<-unique(Purpleair_2026_historical_data$sensor_index)
+
+    sensor_index <- vec
+
+    start_date <- "2026-01-01"
+    end_date   <- "2026-10-18"
+    average <- "60"  
+    fields <- c(
+      "humidity",
+      "temperature",
+      "pressure",
+      "pm2.5_cf_1_a",
+      "pm2.5_cf_1_b",
+      "rssi"
+    )
+
+    historical_data <- getSensorHistory(
+      sensorIndex = sensor_index,
+      apiReadKey  = api_key,
+      startDate   = start_date,
+      endDate     = end_date,
+      average     = average,
+      fields      = fields
+    )
+
+    nrow(historical_data)
+
+    table(historical_data$sensor_index)
+    colnames(historical_data)
+    historical_data<-historical_data%>%
+    mutate(pm_2p5_diff=pm2.5_cf_1_a-pm2.5_cf_1_b)%>%
+    mutate(pm2p5_cf_1_a=pm2.5_cf_1_a, pm2p5_cf_1_b=pm2.5_cf_1_b)
+
+    library(dplyr)
+    historical_data<-historical_data %>% 
+    relocate(sensor_index, .before = time_stamp)%>%
+    relocate(humidity, .before = rssi)%>%
+    relocate(pm_2p5_diff, .after=pm2p5_cf_1_b)%>%
+    relocate(rssi, .before=pm_2p5_diff)%>%
+      
+    historical_data<-historical_data%>%
+    select(-pm2.5_cf_1_a, -pm2.5_cf_1_b)
+    colnames(historical_data)[9]="pm2p5_diff"
+
+I then cleaned the duplicates out of Purpleair\_air\_history.
+
+    duplicate_historical_records<- dbGetQuery(con, 
+                                    "SELECT
+        sensor_index, time_stamp, humidity, temperature, pressure, pm2p5_cf_1_a, pm2p5_cf_1_b, rssi, pm2p5_diff,
+        COUNT(*) AS n
+    FROM Purpleair_air_history
+    GROUP BY sensor_index, time_stamp, humidity, temperature, pressure, pm2p5_cf_1_a, pm2p5_cf_1_b, rssi, pm2p5_diff
+    HAVING COUNT(*) > 1")
+
+    dbExecute(con, "
+    WITH duplicates AS (
+        SELECT *,
+               ROW_NUMBER() OVER (
+                   PARTITION BY sensor_index, time_stamp, humidity, temperature, pressure, pm2p5_cf_1_a, pm2p5_cf_1_b, rssi, pm2p5_diff
+                   ORDER BY sensor_index, time_stamp, humidity, temperature, pressure, pm2p5_cf_1_a, pm2p5_cf_1_b, rssi, pm2p5_diff) 
+                   AS rn
+        FROM Purpleair_air_history)
+    DELETE FROM duplicates
+    WHERE rn > 1")
+
+This removed 240,242 duplicate records, which is far fewer than the
+number of records added to the database.
