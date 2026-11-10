@@ -1,5 +1,4 @@
-###Writing the code for the 24 hour trigger to update sensor_infomation and air_history tables daily (adapted from the code for a previous 24 hour trigger)
-
+###Writing the code for the 24 hour trigger to update sensor_information and air_history tables daily (adapted from the code for a previous 24 hour trigger)
 
 library(tidyverse)
 library(readxl)
@@ -82,11 +81,8 @@ for (i in sensoridsvec) {
       updated_sensors <- c(updated_sensors, i) 
       sensors_pulled_log <- c(sensors_pulled_log, as.character(i))} #Covers the case in which a sensor that was previously active stops reporting data for more than 30 days, to avoid pulling historical data for such sensors)
       
-      
     }
-
   }
-
 
 cat(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -101,8 +97,8 @@ if (length(updated_sensors) > 0) {
   
   current_time <- Sys.time()
   time_query <- dbGetQuery(con, "SELECT MAX(time_stamp) AS time_stamp FROM Purpleair_air_history")
-  initial_time<-time_query$time_stamp
-  
+  initial_time<-time_query$time_stamp + minutes(1) #I have changed the primary key to be a composite key of sensor_index and time_stamp, which prevents duplicity of timestamps or sensor indices. 
+
   start_date_str <- format(initial_time,  format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
   end_date_str   <- format(current_time, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
   
@@ -122,59 +118,80 @@ if (length(updated_sensors) > 0) {
     "- Pulled previous 24 hours of historical data\n"
   )}, error= function(e) {
     cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "- ERROR: Purpleair API history pull failed:", conditionMessage(e), "\n")
-  })
+  })}
   
   if (!is.null(update_raw) && nrow(update_raw) > 0) {
+    
+    update_clean = update_raw %>% 
+      mutate(
+        pm2p5_cf_1_a = `pm2.5_cf_1_a`,
+        pm2p5_cf_1_b = `pm2.5_cf_1_b`,
+        pm2p5_diff   = pm2p5_cf_1_a - pm2p5_cf_1_b)%>%
+      select(sensor_index, time_stamp, humidity, temperature, pressure,
+             pm2p5_cf_1_a = `pm2.5_cf_1_a`, pm2p5_cf_1_b = `pm2.5_cf_1_b`, rssi, pm2p5_diff)
+    
+    cat(
+      format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      "- Processed and cleaned historical data\n"
+    )
+    
+    nrow(update_clean)
+    #Notice that I do not append the new historical data to Purpleair_air_history yet
+    
+    sensor_list_string <- paste(sensors_pulled_log, collapse = ", ")
+    
+    ###5. Add metadata about the new historical pulls to the trigger_pulls table
+    
+    trigger_log_df <- data.frame(
+      pull_timestamp    = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      rows_inserted     = as.integer(nrow(update_clean)),
+      sensors_processed = sensor_list_string,
+      stringsAsFactors  = FALSE
+    )
+    
+    dbWriteTable(conn=con, name='Purpleair_trigger_pulls', value=trigger_log_df, append=TRUE, row.names=FALSE)
+    
+    cat(
+      format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      "- Appended historical pull metadata to trigger_pulls table\n"
+    )
+    
+    New_pull_id<-dbGetQuery(con, "SELECT TOP 1 pull_id FROM Purpleair_trigger_pulls ORDER BY pull_id DESC")
+    
+    New_pull_id_integer<-as.numeric(New_pull_id$pull_id[1])
+    
+    update_clean_with_pull_id<-update_clean%>%
+    mutate(pull_id=New_pull_id_integer)%>%
+    mutate(time_stamp=ymd_hms(time_stamp, tz="UTC"))%>%
+    distinct(sensor_index, time_stamp, .keep_all=TRUE)
+    
+# selects primary keys from update_clean_with_pull_id that aren't already in the database 
+    
+    if (nrow(update_clean_with_pull_id) > 0){
+      dbWriteTable(conn=con,
+                   name='Purpleair_air_history',
+                   value=update_clean_with_pull_id,
+                   append=TRUE,
+                   row.names=FALSE)}
+    
+    cat(
+      format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      "- Successfully appended",
+      nrow(update_clean_with_pull_id),
+      "new historical observations\n"
+    )
+    
+  } else {
+    
+    cat(
+      format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      "- No new observations to append.\n"
+    )
+    
+  }
   
-  update_clean = update_raw %>% 
-    mutate(
-      pm2p5_cf_1_a = `pm2.5_cf_1_a`,
-      pm2p5_cf_1_b = `pm2.5_cf_1_b`,
-      pm2p5_diff   = pm2p5_cf_1_a - pm2p5_cf_1_b)%>%
-    select(sensor_index, time_stamp, humidity, temperature, pressure,
-           pm2p5_cf_1_a = `pm2.5_cf_1_a`, pm2p5_cf_1_b = `pm2.5_cf_1_b`, rssi, pm2p5_diff)
-  
-  cat(
-    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-    "- Processed and cleaned historical data\n"
-  )
-  
-  
-  dbWriteTable(conn = con,
-               name = 'Purpleair_air_history',
-               value = update_clean,
-               append = TRUE,
-               row.names = FALSE)
-  
-  cat(
-    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-    "- Appended historical data to air_history\n"
-  )
-  
-  sensor_list_string <- paste(sensors_pulled_log, collapse = ", ")
-  
-###5. Add metadata about the new historical pulls to the trigger_pulls table
-  
-  trigger_log_df <- data.frame(
-    pull_timestamp    = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-    rows_inserted     = as.integer(nrow(update_clean)),
-    sensors_processed = sensor_list_string,
-    stringsAsFactors  = FALSE
-  )
-  
-  dbWriteTable(conn=con, name='Purpleair_trigger_pulls', value=trigger_log_df, append=TRUE, row.names=FALSE)
-  
-  cat(
-    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-    "- Appended historical pull metadata to trigger_pulls table\n"
-  )
-  
-} else { cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "- No sensors required historical updates.\n") }
-}
-
-###6. Disconnect cleanly
-dbDisconnect(con)
-cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "- Script finished executing and disconnected cleanly.\n")
-
-
+  ###6. Disconnect cleanly
+  dbDisconnect(con)
+  cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "- Script finished executing and disconnected cleanly.\n")
+    
 
