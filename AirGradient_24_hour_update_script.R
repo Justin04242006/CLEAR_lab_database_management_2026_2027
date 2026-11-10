@@ -90,7 +90,6 @@ for (i in sensoridsvec){
 
 final_df <- bind_rows(all_data)
 
-##
 all_data <- list()
 
 for (i in sensoridsvec) {
@@ -180,18 +179,9 @@ New_airgradient_historical_data$timestamp <- as.POSIXct(
   format = "%Y-%m-%dT%H:%M:%OS",
   tz = "UTC")
 
-dbWriteTable(
-  conn      = con,
-  name      = "Airgradient_air_history",
-  value     = New_airgradient_historical_data,
-  append    = TRUE,         
-  overwrite = FALSE,         
-  row.names = FALSE
-)
-
 cat(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-  "- Updated historical data\n"
+  "- Cleaned historical data\n"
 )
 
 
@@ -252,7 +242,43 @@ cat(
   "- Appended historical pull metadata to trigger_pulls table\n"
 )
 
+New_pull_id<-dbGetQuery(con, "SELECT TOP 1 pull_id FROM Airgradient_trigger_pulls ORDER BY pull_id DESC")
+
+New_pull_id_integer<-as.numeric(New_pull_id$pull_id[1])
+
+update_clean_with_pull_id<-New_airgradient_historical_data%>%
+  mutate(pull_id=New_pull_id_integer)%>%
+  distinct(locationID, timestamp, .keep_all=TRUE)
+
+
+if (nrow(update_clean_with_pull_id) > 0){
+  dbWriteTable(conn=con,
+               name='Airgradient_air_history',
+               value=update_clean_with_pull_id,
+               append=TRUE,
+               overwrite=FALSE,
+               row.names=FALSE)
+
+cat(
+  format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+  "- Successfully appended",
+  nrow(update_clean_with_pull_id),
+  "new historical observations\n"
+)
+
+} else {
+  
+  cat(
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    "- No new observations to append.\n"
+  )
+  
+} 
+
+#7. Disconnect cleanly
+
 dbDisconnect(con)
 cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "- Script finished executing and disconnected cleanly.\n")
 
-
+Sys.setenv("PURPLE_AIR_API_KEY"="F38F115A-78CA-11EE-A8AF-42010A80000A")
+Sys.setenv("LUC_CLEAR_AIRGRADIENT_API_KEY"="3dee03db-d2a7-443c-b8ba-85d2e7ebd8b1")
