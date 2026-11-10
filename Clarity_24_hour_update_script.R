@@ -31,6 +31,8 @@ cat(
   "- Connected to database\n"
 )
 
+Sys.getenv("DB_USERNAME")
+Sys.getenv("DB_PASSWORD")
 
 ### 2. Fetch Database Active Sensors
 Clarity_active_sensors <- dbGetQuery(con, "SELECT datasourceid, last_seen FROM Clarity_sensor_information WHERE sensor_activity_status= 'Active'")
@@ -142,15 +144,6 @@ if (length(sensoridsvec) > 0) {
 New_historical_data<-New_historical_data%>%
 select(c(datasourceid, sensor_name, time, record_id, relhumidinternalindividual, no2concindividual_raw, no2concindividual_value, pm2_5concmassindividual_raw, pm2_5concmassindividual_value, pm2_5concnumindividual_raw, pm2_5concnumindividual_value, temperatureinternalindividual))
 
-dbWriteTable(
-conn      = con,
-name      = "Clarity_air_history",
-value     = New_historical_data,
-append    = TRUE,         
-overwrite = FALSE,         
-row.names = FALSE
-)
-
 sensors_pulled_log<-c()
 for (i in sensoridsvec) {
   sensors_pulled_log <- c(sensors_pulled_log, as.character(i)) 
@@ -208,6 +201,42 @@ cat(
   "- Appended historical pull metadata to trigger_pulls table\n"
 )
 
+New_pull_id<-dbGetQuery(con, "SELECT TOP 1 pull_id FROM Clarity_trigger_pulls ORDER BY pull_id DESC")
+
+New_pull_id_integer<-as.numeric(New_pull_id$pull_id[1])
+
+update_clean_with_pull_id<-New_historical_data%>%
+  mutate(pull_id=New_pull_id_integer)%>%
+  distinct(datasourceid, time, .keep_all=TRUE)
+
+if(nrow(update_clean_with_pull_id) > 0){
+  dbWriteTable(
+  conn      = con,
+  name      = "Clarity_air_history",
+  value     = update_clean_with_pull_id,
+  append    = TRUE,         
+  row.names = FALSE
+)
+  
+ cat(
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    "- Successfully appended",
+    nrow(update_clean_with_pull_id),
+    "new historical observations\n"
+  )
+  
+} else {
+  
+  cat(
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    "- No new observations to append.\n"
+  )
+  
+} 
+
+#7. Disconnect cleanly
+
 dbDisconnect(con)
 cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "- Script finished executing and disconnected cleanly.\n")
+
 
