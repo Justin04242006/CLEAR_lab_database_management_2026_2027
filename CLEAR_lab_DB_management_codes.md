@@ -3,51 +3,13 @@ air quality database during my role as CLEAR lab Database Manager during
 the 2026-2027 school year. The role commenced on September 21, 2026.
 
     library(tidyverse)
-
-    ## Warning: package 'ggplot2' was built under R version 4.4.3
-
-    ## Warning: package 'tibble' was built under R version 4.4.3
-
-    ## Warning: package 'tidyr' was built under R version 4.4.3
-
-    ## Warning: package 'readr' was built under R version 4.4.3
-
-    ## Warning: package 'purrr' was built under R version 4.4.3
-
-    ## Warning: package 'dplyr' was built under R version 4.4.3
-
-    ## ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
-    ## ✔ dplyr     1.2.0     ✔ readr     2.1.6
-    ## ✔ forcats   1.0.1     ✔ stringr   1.6.0
-    ## ✔ ggplot2   4.0.2     ✔ tibble    3.3.1
-    ## ✔ lubridate 1.9.4     ✔ tidyr     1.3.2
-    ## ✔ purrr     1.2.1     
-    ## ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
-    ## ✖ dplyr::filter() masks stats::filter()
-    ## ✖ dplyr::lag()    masks stats::lag()
-    ## ℹ Use the conflicted package (<http://conflicted.r-lib.org/>) to force all conflicts to become errors
-
     library(readxl)
     library(httr)
     library(jsonlite)
-
-    ## 
-    ## Attaching package: 'jsonlite'
-    ## 
-    ## The following object is masked from 'package:purrr':
-    ## 
-    ##     flatten
-
     library(lubridate)
     library(PurpleAirAPI)
     library(DBI)
-
-    ## Warning: package 'DBI' was built under R version 4.4.3
-
     library(odbc)
-
-    ## Warning: package 'odbc' was built under R version 4.4.3
-
     library(PurpleAir)
 
 
@@ -229,85 +191,6 @@ study.
 
 ### 9/30/26: downloading all Airgradient data between 7pm on 9/28 and 7pm on 9/30 for the co-location study
 
-    library(httr)
-    library(jsonlite)
-    library(dplyr)
-    token=Sys.getenv("LUC_CLEAR_AIRGRADIENT_API_KEY")
-    location_ids <- c("190848", "190849", "190850", "190851", "190852", "190853", "190854", "190855", "190856", "190857", "190858", "190859", "190860", "190861", "190862", "190863", "190864")
-
-    all_data_9_28_thru_30 <- list()
-
-    for (id in location_ids){
-      url <- paste0("https://api.airgradient.com/public/api/v1/locations/", id, "/measures/past")
-      
-      response <- GET(
-        url,
-        query = list(
-          token = token,
-          from = "2026-09-27",
-          to   = "2026-10-01")
-      )
-      
-      if (status_code(response) != 200) {
-        warning("Request failed for sensor ", id, " with status ", status_code(response))
-        next
-      }
-      
-      json_text <- content(response, as = "text", encoding = "UTF-8")
-      df <- fromJSON(json_text, flatten = TRUE)
-      
-      df$location_id <- id
-      
-      all_data_9_28_thru_30[[id]] <- df
-    }
-
-    final_df <- bind_rows(all_data_9_28_thru_30)
-
-    nrow(final_df)
-
-
-
-    New_airgradient_historical_data<-final_df%>%
-      select(location_id, locationName, timestamp, pm01, pm01_corrected, pm02, pm02_corrected, pm10, pm10_corrected, atmp, atmp_corrected, rhum, rhum_corrected, rco2, rco2_corrected, tvoc)
-
-    New_airgradient_historical_data$timestamp <- as.POSIXct(
-      New_airgradient_historical_data$timestamp,
-      format = "%Y-%m-%dT%H:%M:%OS",
-      tz = "UTC")
-
-    max(New_airgradient_historical_data$timestamp)
-    head(New_airgradient_historical_data$timestamp)
-    sum(is.na(New_airgradient_historical_data$timestamp))
-
-    New_airgradient_historical_data_filtered<-New_airgradient_historical_data%>%
-    filter(timestamp <= as.POSIXct("2026-09-30 19:00:00"))
-
-    max(New_airgradient_historical_data_filtered$timestamp)
-    class(New_airgradient_historical_data_filtered$timestamp)
-
-    cutoff_1 <- as.POSIXct(
-      "2026-09-30 19:00:00",
-      tz = "UTC"
-    )
-
-    cutoff_2 <- as.POSIXct(
-      "2026-09-28 17:00:00",
-      tz = "UTC"
-    )
-
-    New_airgradient_historical_data_filtered <-
-      New_airgradient_historical_data %>%
-      filter(timestamp <= cutoff_1 & timestamp >= cutoff_2)
-
-    max(New_airgradient_historical_data_filtered$timestamp)
-    min(New_airgradient_historical_data_filtered$timestamp)
-
-    Airgradient_calibration_data<-write.csv(New_airgradient_historical_data_filtered, file="Airgradient_sensor_calibration_data.csv", row.names=FALSE)
-
-    Airgradient_Calibration_data<-read_csv("~/Desktop/CLEAR lab database mangement 26-27/CLEAR_lab_database_work/Airgradient_sensor_calibration_data.csv")
-
-    nrow(Airgradient_Calibration_data)
-
 ### 10/1/26: downloading historical data for four Purpleair sensors between 7pm on 9/28 and 7pm on 9/30 for the co-location study (to co locate with the Airgradient sensors)
 
     api_key<-Sys.getenv("PURPLE_AIR_API_KEY")
@@ -336,24 +219,11 @@ study.
       average     = average
     )
 
-    ## Sensor 1 of 4 (ID: 304768), Interval: 2026-09-28 to 2026-09-30 Sensor 2 of 4
-    ## (ID: 309628), Interval: 2026-09-28 to 2026-09-30 Sensor 3 of 4 (ID: 309644),
-    ## Interval: 2026-09-28 to 2026-09-30 Sensor 4 of 4 (ID: 310423), Interval:
-    ## 2026-09-28 to 2026-09-30
-
     nrow(historical_data)
-
-    ## [1] 7491
 
     table(historical_data$sensor_index)
 
-    ## 
-    ## 304768 309628 309644 310423 
-    ##   2157   1591   2158   1585
-
     max(historical_data$time_stamp)
-
-    ## [1] "2026-09-30 23:59:24"
 
     historical_data<-historical_data%>%
     filter(time_stamp >= "2026-09-28 18:58:00" & time_stamp <= "2026-09-30 19:02:00")
@@ -362,18 +232,7 @@ study.
 
     Purpleair_Calibration_data<-read_csv("~/Desktop/CLEAR lab database mangement 26-27/CLEAR_lab_database_work/Purple_air_sensor_calibration_data.csv")
 
-    ## Rows: 5760 Columns: 8
-    ## ── Column specification ────────────────────────────────────────────────────────
-    ## Delimiter: ","
-    ## dbl  (7): rssi, humidity, temperature, pressure, pm2.5_cf_1_a, pm2.5_cf_1_b,...
-    ## dttm (1): time_stamp
-    ## 
-    ## ℹ Use `spec()` to retrieve the full column specification for this data.
-    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
-
     nrow(Purpleair_Calibration_data)
-
-    ## [1] 5760
 
 \#10/5/26: adding additional Airgradient sensors to the database based
 on a file sent by a former student CLEAR lab employee several months ago
@@ -420,18 +279,6 @@ on a file sent by a former student CLEAR lab employee several months ago
 
 
     Airgradient_chunk_1
-
-    ## # A tibble: 8 × 1
-    ##   location_id
-    ##   <chr>      
-    ## 1 59983      
-    ## 2 59297      
-    ## 3 163250     
-    ## 4 75775      
-    ## 5 171390     
-    ## 6 163298     
-    ## 7 58933      
-    ## 8 77131
 
 None of these sensors contained any sensor metadata or historical data
 on the API. My supervisor told me to revisit this at a later point after
@@ -578,298 +425,6 @@ each day throughout the year 2026 as a time series.
       Num_distinct_reporting_sensors<-length(unique(new_data$sensor_index))
       Reporting_sensors_list<-c(Reporting_sensors_list, Num_distinct_reporting_sensors)}
 
-    ## [1] 20454
-    ## [1] 20455
-    ## [1] 20456
-    ## [1] 20457
-    ## [1] 20458
-    ## [1] 20459
-    ## [1] 20460
-    ## [1] 20461
-    ## [1] 20462
-    ## [1] 20463
-    ## [1] 20464
-    ## [1] 20465
-    ## [1] 20466
-    ## [1] 20467
-    ## [1] 20468
-    ## [1] 20469
-    ## [1] 20470
-    ## [1] 20471
-    ## [1] 20472
-    ## [1] 20473
-    ## [1] 20474
-    ## [1] 20475
-    ## [1] 20476
-    ## [1] 20477
-    ## [1] 20478
-    ## [1] 20479
-    ## [1] 20480
-    ## [1] 20481
-    ## [1] 20482
-    ## [1] 20483
-    ## [1] 20484
-    ## [1] 20485
-    ## [1] 20486
-    ## [1] 20487
-    ## [1] 20488
-    ## [1] 20489
-    ## [1] 20490
-    ## [1] 20491
-    ## [1] 20492
-    ## [1] 20493
-    ## [1] 20494
-    ## [1] 20495
-    ## [1] 20496
-    ## [1] 20497
-    ## [1] 20498
-    ## [1] 20499
-    ## [1] 20500
-    ## [1] 20501
-    ## [1] 20502
-    ## [1] 20503
-    ## [1] 20504
-    ## [1] 20505
-    ## [1] 20506
-    ## [1] 20507
-    ## [1] 20508
-    ## [1] 20509
-    ## [1] 20510
-    ## [1] 20511
-    ## [1] 20512
-    ## [1] 20513
-    ## [1] 20514
-    ## [1] 20515
-    ## [1] 20516
-    ## [1] 20517
-    ## [1] 20518
-    ## [1] 20519
-    ## [1] 20520
-    ## [1] 20521
-    ## [1] 20522
-    ## [1] 20523
-    ## [1] 20524
-    ## [1] 20525
-    ## [1] 20526
-    ## [1] 20527
-    ## [1] 20528
-    ## [1] 20529
-    ## [1] 20530
-    ## [1] 20531
-    ## [1] 20532
-    ## [1] 20533
-    ## [1] 20534
-    ## [1] 20535
-    ## [1] 20536
-    ## [1] 20537
-    ## [1] 20538
-    ## [1] 20539
-    ## [1] 20540
-    ## [1] 20541
-    ## [1] 20542
-    ## [1] 20543
-    ## [1] 20544
-    ## [1] 20545
-    ## [1] 20546
-    ## [1] 20547
-    ## [1] 20548
-    ## [1] 20549
-    ## [1] 20550
-    ## [1] 20551
-    ## [1] 20552
-    ## [1] 20553
-    ## [1] 20554
-    ## [1] 20555
-    ## [1] 20556
-    ## [1] 20557
-    ## [1] 20558
-    ## [1] 20559
-    ## [1] 20560
-    ## [1] 20561
-    ## [1] 20562
-    ## [1] 20563
-    ## [1] 20564
-    ## [1] 20565
-    ## [1] 20566
-    ## [1] 20567
-    ## [1] 20568
-    ## [1] 20569
-    ## [1] 20570
-    ## [1] 20571
-    ## [1] 20572
-    ## [1] 20573
-    ## [1] 20574
-    ## [1] 20575
-    ## [1] 20576
-    ## [1] 20577
-    ## [1] 20578
-    ## [1] 20579
-    ## [1] 20580
-    ## [1] 20581
-    ## [1] 20582
-    ## [1] 20583
-    ## [1] 20584
-    ## [1] 20585
-    ## [1] 20586
-    ## [1] 20587
-    ## [1] 20588
-    ## [1] 20589
-    ## [1] 20590
-    ## [1] 20591
-    ## [1] 20592
-    ## [1] 20593
-    ## [1] 20594
-    ## [1] 20595
-    ## [1] 20596
-    ## [1] 20597
-    ## [1] 20598
-    ## [1] 20599
-    ## [1] 20600
-    ## [1] 20601
-    ## [1] 20602
-    ## [1] 20603
-    ## [1] 20604
-    ## [1] 20605
-    ## [1] 20606
-    ## [1] 20607
-    ## [1] 20608
-    ## [1] 20609
-    ## [1] 20610
-    ## [1] 20611
-    ## [1] 20612
-    ## [1] 20613
-    ## [1] 20614
-    ## [1] 20615
-    ## [1] 20616
-    ## [1] 20617
-    ## [1] 20618
-    ## [1] 20619
-    ## [1] 20620
-    ## [1] 20621
-    ## [1] 20622
-    ## [1] 20623
-    ## [1] 20624
-    ## [1] 20625
-    ## [1] 20626
-    ## [1] 20627
-    ## [1] 20628
-    ## [1] 20629
-    ## [1] 20630
-    ## [1] 20631
-    ## [1] 20632
-    ## [1] 20633
-    ## [1] 20634
-    ## [1] 20635
-    ## [1] 20636
-    ## [1] 20637
-    ## [1] 20638
-    ## [1] 20639
-    ## [1] 20640
-    ## [1] 20641
-    ## [1] 20642
-    ## [1] 20643
-    ## [1] 20644
-    ## [1] 20645
-    ## [1] 20646
-    ## [1] 20647
-    ## [1] 20648
-    ## [1] 20649
-    ## [1] 20650
-    ## [1] 20651
-    ## [1] 20652
-    ## [1] 20653
-    ## [1] 20654
-    ## [1] 20655
-    ## [1] 20656
-    ## [1] 20657
-    ## [1] 20658
-    ## [1] 20659
-    ## [1] 20660
-    ## [1] 20661
-    ## [1] 20662
-    ## [1] 20663
-    ## [1] 20664
-    ## [1] 20665
-    ## [1] 20666
-    ## [1] 20667
-    ## [1] 20668
-    ## [1] 20669
-    ## [1] 20670
-    ## [1] 20671
-    ## [1] 20672
-    ## [1] 20673
-    ## [1] 20674
-    ## [1] 20675
-    ## [1] 20676
-    ## [1] 20677
-    ## [1] 20678
-    ## [1] 20679
-    ## [1] 20680
-    ## [1] 20681
-    ## [1] 20682
-    ## [1] 20683
-    ## [1] 20684
-    ## [1] 20685
-    ## [1] 20686
-    ## [1] 20687
-    ## [1] 20688
-    ## [1] 20689
-    ## [1] 20690
-    ## [1] 20691
-    ## [1] 20692
-    ## [1] 20693
-    ## [1] 20694
-    ## [1] 20695
-    ## [1] 20696
-    ## [1] 20697
-    ## [1] 20698
-    ## [1] 20699
-    ## [1] 20700
-    ## [1] 20701
-    ## [1] 20702
-    ## [1] 20703
-    ## [1] 20704
-    ## [1] 20705
-    ## [1] 20706
-    ## [1] 20707
-    ## [1] 20708
-    ## [1] 20709
-    ## [1] 20710
-    ## [1] 20711
-    ## [1] 20712
-    ## [1] 20713
-    ## [1] 20714
-    ## [1] 20715
-    ## [1] 20716
-    ## [1] 20717
-    ## [1] 20718
-    ## [1] 20719
-    ## [1] 20720
-    ## [1] 20721
-    ## [1] 20722
-    ## [1] 20723
-    ## [1] 20724
-    ## [1] 20725
-    ## [1] 20726
-    ## [1] 20727
-    ## [1] 20728
-    ## [1] 20729
-    ## [1] 20730
-    ## [1] 20731
-    ## [1] 20732
-    ## [1] 20733
-    ## [1] 20734
-    ## [1] 20735
-    ## [1] 20736
-    ## [1] 20737
-    ## [1] 20738
-    ## [1] 20739
-    ## [1] 20740
-    ## [1] 20741
-    ## [1] 20742
-    ## [1] 20743
-    ## [1] 20744
-
     dates_targeted_inquiry<-as.Date(character())
     for (i in Date_list){
       index=which(Date_list==i)
@@ -882,50 +437,15 @@ each day throughout the year 2026 as a time series.
     #Creating the time series
 
     library(plotly)
-
-    ## Warning: package 'plotly' was built under R version 4.4.3
-
-    ## 
-    ## Attaching package: 'plotly'
-
-    ## The following object is masked from 'package:httr':
-    ## 
-    ##     config
-
-    ## The following object is masked from 'package:ggplot2':
-    ## 
-    ##     last_plot
-
-    ## The following object is masked from 'package:stats':
-    ## 
-    ##     filter
-
-    ## The following object is masked from 'package:graphics':
-    ## 
-    ##     layout
-
     Purpleair_sensors_reporting<-plot_ly(data=ts_data_frame, x=~Date, y=~Num_sensors_reporting, type="scatter", mode="lines", col="blue")%>%
     layout(yaxis=list(range=c(0,80)))
     Purpleair_sensors_reporting
-
-    ## Warning: 'scatter' objects don't have these attributes: 'col'
-    ## Valid attributes include:
-    ## 'alignmentgroup', 'cliponaxis', 'connectgaps', 'customdata', 'customdatasrc', 'dx', 'dy', 'error_x', 'error_y', 'fill', 'fillcolor', 'fillpattern', 'groupnorm', 'hoverinfo', 'hoverinfosrc', 'hoverlabel', 'hoveron', 'hovertemplate', 'hovertemplatesrc', 'hovertext', 'hovertextsrc', 'ids', 'idssrc', 'legend', 'legendgroup', 'legendgrouptitle', 'legendrank', 'legendwidth', 'line', 'marker', 'meta', 'metasrc', 'mode', 'name', 'offsetgroup', 'opacity', 'orientation', 'selected', 'selectedpoints', 'showlegend', 'stackgaps', 'stackgroup', 'stream', 'text', 'textfont', 'textposition', 'textpositionsrc', 'textsrc', 'texttemplate', 'texttemplatesrc', 'transforms', 'type', 'uid', 'uirevision', 'unselected', 'visible', 'x', 'x0', 'xaxis', 'xcalendar', 'xhoverformat', 'xperiod', 'xperiod0', 'xperiodalignment', 'xsrc', 'y', 'y0', 'yaxis', 'ycalendar', 'yhoverformat', 'yperiod', 'yperiod0', 'yperiodalignment', 'ysrc', 'key', 'set', 'frame', 'transforms', '_isNestedKey', '_isSimpleKey', '_isGraticule', '_bbox'
-
-![](CLEAR_lab_DB_management_codes_files/figure-markdown_strict/unnamed-chunk-12-1.png)
 
 When I initially generated this plot, the line was at 1-3 sensors for
 the entire period from January 1 to June 1. I suspect this is because I
 initially set the sensor\_activity\_status column based on a static 30
 day threshold and only recently (on 9/21/26) changed the column
 definition to a moving 30 day threshold relative to the current date.
-
-Here is what the initial plot looked like:
-
-<img src="Initial_line_graph.png" alt="My Screenshot Caption" width="75%" />
-<p class="caption">
-My Screenshot Caption
-</p>
 
 I then backfilled the sensor data that was unaccounted for prior to me
 changing the column definition (going up to the current date just to be
@@ -979,18 +499,19 @@ I then cleaned the duplicates out of Purpleair\_air\_history.
 
     duplicate_historical_records<- dbGetQuery(con, 
                                     "SELECT
-        sensor_index, time_stamp, humidity, temperature, pressure, pm2p5_cf_1_a, pm2p5_cf_1_b, rssi, pm2p5_diff,
-        COUNT(*) AS n
+        sensor_index, time_stamp, COUNT(*) AS n
     FROM Purpleair_air_history
-    GROUP BY sensor_index, time_stamp, humidity, temperature, pressure, pm2p5_cf_1_a, pm2p5_cf_1_b, rssi, pm2p5_diff
+    GROUP BY sensor_index, time_stamp
     HAVING COUNT(*) > 1")
+
+    nrow(duplicate_historical_records)
 
     dbExecute(con, "
     WITH duplicates AS (
         SELECT *,
                ROW_NUMBER() OVER (
-                   PARTITION BY sensor_index, time_stamp, humidity, temperature, pressure, pm2p5_cf_1_a, pm2p5_cf_1_b, rssi, pm2p5_diff
-                   ORDER BY sensor_index, time_stamp, humidity, temperature, pressure, pm2p5_cf_1_a, pm2p5_cf_1_b, rssi, pm2p5_diff) 
+                   PARTITION BY sensor_index, time_stamp
+                   ORDER BY sensor_index, time_stamp) 
                    AS rn
         FROM Purpleair_air_history)
     DELETE FROM duplicates
@@ -998,3 +519,259 @@ I then cleaned the duplicates out of Purpleair\_air\_history.
 
 This removed 240,242 duplicate records, which is far fewer than the
 number of records added to the database.
+
+11/9/26: Revising the air\_history table of each sensor company to
+include a pull\_id column, like the trigger\_pulls tables. When creating
+an ER diagram of the database using dBeaver, I realized that I could
+only make connections between the air\_history tables and the
+sensor\_information tables because these tables share a sensor\_index
+field. The pull\_id field in the trigger\_pulls tables is not shared
+with any other table, preventing me from making connections to the
+trigger\_pulls tables.
+
+    dbExecute(con, "ALTER TABLE Purpleair_air_history ADD pull_id INT") #This ensures that all current rows in the table recieve a NULL value for the pull_id column, but subsequent rows appended later will have valid integer values (guidance from Microsoft Learn)
+
+    a<-dbGetQuery(con, "SELECT * FROM Purpleair_trigger_pulls")
+
+    b<-dbGetQuery(con, "SELECT pull_id FROM Purpleair_air_history")
+    head(b, 10)
+
+To reflect these changes when I run the PurpleAir\_24\_hour update
+script, I will modify the update script so that it does not append the
+new historical data to the database until the pull\_id value from the
+new row of trigger\_pulls is supplied to all the values of the new
+historical dataframe. Specifically, I changed the historical
+data/metadata about historical pull part of the update script from this:
+
+    ### 4. Fetch and Process Historical Data
+
+    #Wrap historical steps in an IF block to prevent errors if 0 sensors need updates
+
+    if (length(updated_sensors) > 0) { 
+      
+      current_time <- Sys.time()
+      time_query <- dbGetQuery(con, "SELECT MAX(time_stamp) AS time_stamp FROM Purpleair_air_history")
+      initial_time<-time_query$time_stamp
+      
+      start_date_str <- format(initial_time,  format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
+      end_date_str   <- format(current_time, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
+      
+      update_raw<-NULL
+      
+      tryCatch({update_raw = getSensorHistory(
+        sensorIndex = updated_sensors, 
+        apiReadKey=Purpleair_api_key,
+        startDate=start_date_str,
+        endDate=end_date_str,
+        average='0', 
+        fields=c('humidity', 'temperature', 'pressure', 'pm2.5_cf_1_a', 'pm2.5_cf_1_b', 'rssi')
+      )
+      
+      cat(
+        format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+        "- Pulled previous 24 hours of historical data\n"
+      )}, error= function(e) {
+        cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "- ERROR: Purpleair API history pull failed:", conditionMessage(e), "\n")
+      })
+      
+      if (!is.null(update_raw) && nrow(update_raw) > 0) {
+      
+      update_clean = update_raw %>% 
+        mutate(
+          pm2p5_cf_1_a = `pm2.5_cf_1_a`,
+          pm2p5_cf_1_b = `pm2.5_cf_1_b`,
+          pm2p5_diff   = pm2p5_cf_1_a - pm2p5_cf_1_b)%>%
+        select(sensor_index, time_stamp, humidity, temperature, pressure,
+               pm2p5_cf_1_a = `pm2.5_cf_1_a`, pm2p5_cf_1_b = `pm2.5_cf_1_b`, rssi, pm2p5_diff)
+      
+      cat(
+        format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+        "- Processed and cleaned historical data\n"
+      )
+      
+      
+      dbWriteTable(conn = con,
+                   name = 'Purpleair_air_history',
+                   value = update_clean,
+                   append = TRUE,
+                   row.names = FALSE)
+      
+      cat(
+        format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+        "- Appended historical data to air_history\n"
+      )
+      
+      sensor_list_string <- paste(sensors_pulled_log, collapse = ", ")
+      
+    ###5. Add metadata about the new historical pulls to the trigger_pulls table
+      
+      trigger_log_df <- data.frame(
+        pull_timestamp    = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+        rows_inserted     = as.integer(nrow(update_clean)),
+        sensors_processed = sensor_list_string,
+        stringsAsFactors  = FALSE
+      )
+      
+      dbWriteTable(conn=con, name='Purpleair_trigger_pulls', value=trigger_log_df, append=TRUE, row.names=FALSE)
+      
+      cat(
+        format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+        "- Appended historical pull metadata to trigger_pulls table\n"
+      )
+      
+    } else { cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "- No sensors required historical updates.\n") }
+    }
+
+to this:
+
+    if (length(updated_sensors) > 0) { 
+      
+      current_time <- Sys.time()
+      time_query <- dbGetQuery(con, "SELECT MAX(time_stamp) AS time_stamp FROM Purpleair_air_history")
+      initial_time<-time_query$time_stamp
+      
+      start_date_str <- format(initial_time,  format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
+      end_date_str   <- format(current_time, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
+      
+      update_raw<-NULL
+      
+      tryCatch({update_raw = getSensorHistory(
+        sensorIndex = updated_sensors, 
+        apiReadKey=Purpleair_api_key,
+        startDate=start_date_str,
+        endDate=end_date_str,
+        average='0', 
+        fields=c('humidity', 'temperature', 'pressure', 'pm2.5_cf_1_a', 'pm2.5_cf_1_b', 'rssi')
+      )
+      
+      cat(
+        format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+        "- Pulled previous 24 hours of historical data\n"
+      )}, error= function(e) {
+        cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "- ERROR: Purpleair API history pull failed:", conditionMessage(e), "\n")
+      })
+      
+      if (!is.null(update_raw) && nrow(update_raw) > 0) {
+      
+      update_clean = update_raw %>% 
+        mutate(
+          pm2p5_cf_1_a = `pm2.5_cf_1_a`,
+          pm2p5_cf_1_b = `pm2.5_cf_1_b`,
+          pm2p5_diff   = pm2p5_cf_1_a - pm2p5_cf_1_b)%>%
+        select(sensor_index, time_stamp, humidity, temperature, pressure,
+               pm2p5_cf_1_a = `pm2.5_cf_1_a`, pm2p5_cf_1_b = `pm2.5_cf_1_b`, rssi, pm2p5_diff)
+      
+      cat(
+        format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+        "- Processed and cleaned historical data\n"
+      )
+      
+     #Notice that I do not append the new historical data to Purpleair_air_history yet
+      
+      sensor_list_string <- paste(sensors_pulled_log, collapse = ", ")
+      
+    ###5. Add metadata about the new historical pulls to the trigger_pulls table
+      
+      trigger_log_df <- data.frame(
+        pull_timestamp    = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+        rows_inserted     = as.integer(nrow(update_clean)),
+        sensors_processed = sensor_list_string,
+        stringsAsFactors  = FALSE
+      )
+      
+      dbWriteTable(conn=con, name='Purpleair_trigger_pulls', value=trigger_log_df, append=TRUE, row.names=FALSE)
+      
+        cat(
+        format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+        "- Appended historical pull metadata to trigger_pulls table\n"
+      )
+
+      Max_pull_timestamp<-dbGetQuery(con, "SELECT MAX(pull_timestamp) FROM Purpleair_trigger_pulls")
+      Max_pull_time_stamp<-ymd_hms(Max_pull_timestamp[1,1])
+      New_pull_id<-dbGetQuery(con, "SELECT pull_id FROM Purpleair_trigger_pulls WHERE pull_timestamp=?", params=list(Max_pull_time_stamp))
+    New_pull_id_integer=as.numeric(New_pull_id[1,1])
+      
+      ###The new part: Querying the most recent value of pull_id from PurpleAir_trigger_pulls (the value corresponding to the most recent row of historical update metadata)
+      
+      update_clean_with_pull_id<-update_clean%>%
+        mutate(pull_id=rep(New_pull_id_integer, nrow(update_clean))) #Populating a pull_id column for the new historical dataframe containing the new value of pull_id (a one to many relationship exists between the pull_id in trigger_pulls and the pull_id in air_history)
+      
+        dbWriteTable(conn = con,
+                   name = 'Purpleair_air_history',
+                   value = update_clean_with_pull_id,
+                   append = TRUE,
+                   row.names = FALSE) 
+        
+        #I wait to append the new historical data until AFTER I append the historical pull metadata and add the pull_id column with the corresponding value of pull_id to the new historical data
+        
+      
+    } else { cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "- No sensors required historical updates.\n") }
+    }
+
+The old workflow for this part of the script:
+
+Retrieve new historical data –&gt; Clean up historical data column names
+to match database schema –&gt; Append new historical data to
+Purpleair\_air\_history –&gt; obtain metadata about historical pull
+–&gt; Append historical pull metadata to Purpleair\_trigger\_pulls
+
+The new workflow:
+
+Retrieve new historical data –&gt; Clean up historical data column names
+to match database schema –&gt; obtain metadata about historical pull
+–&gt; Append historical pull metadata to Purpleair\_trigger\_pulls –&gt;
+query newest pull\_id from Purpleair\_trigger\_pulls –&gt; Append new
+pull\_id to new historical data –&gt; Append new historical data to
+Purpleair\_air\_history
+
+I then repeated these steps for the Clarity and AirGradient sensors,
+along with corresponding changes to the update scripts.
+
+    dbExecute(con, "ALTER TABLE Clarity_air_history ADD pull_id INT")
+
+    a<-dbGetQuery(con, "SELECT * FROM Clarity_trigger_pulls")
+
+    b<-dbGetQuery(con, "SELECT pull_id FROM Clarity_air_history")
+    head(b, 10)
+
+    a
+
+    dbExecute(con, "ALTER TABLE Airgradient_air_history ADD pull_id INT")
+
+11/10/26: Downloading historical measurements from EPA sensors using the
+AirNow R package, which enables data retrieval from the AirNow API
+
+    install.packages("airnow")
+
+First, I must instantiate the API key that was randomly generated by the
+AirNow API Portal when I created a personal account.
+
+    library(airnow)
+
+    ## Warning: package 'airnow' was built under R version 4.4.3
+
+    set_airnow_token(token="786FD9B7-737A-43E8-8E1D-CDFA43083F67", ask=is_interactive())
+
+    ## ℹ AirNow API token is already set. Overriding for this session only.
+    ## To use this token permanently, update `AIRNOW_API_KEY` it in your '~/.Renviron' file.
+
+    get_airnow_token(ask=is_interactive())
+
+    ## [1] "786FD9B7-737A-43E8-8E1D-CDFA43083F67"
+
+Test query: retrieving 1 day of historical measurements for EPA sensors
+in Chicago
+
+    box=c(-87.94009, 41.64458, -87.52509, 42.02295)
+    test_historical_data<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                          parameters="pm25",
+                                          start_time="2026-11-10 00:00:00",
+                                          end_time="2026-11-11 00:00:00",
+                                          monitor_type="both",
+                                          data_type="both",
+                                          verbose=FALSE,
+                                          raw_concentrations=TRUE,
+                                          clean_names=TRUE,
+                                          api_key = get_airnow_token())
+
+    packageVersion("airnow")
