@@ -16,7 +16,7 @@ source("getPurpleairSensors_debugged.R") #This is an edited version of the getPu
 
 This file contains all the code I used to query and update the CLEAR lab air quality database during my role as CLEAR lab Database Manager during the 2026-2027 school year. The role commenced on September 21, 2026. 
 
-```{r}
+```{r, eval=FALSE}
 
 library(tidyverse)
 library(readxl)
@@ -352,7 +352,7 @@ nrow(Airgradient_Calibration_data)
 
 ### 10/1/26: downloading historical data for four Purpleair sensors between 7pm on 9/28 and 7pm on 9/30 for the co-location study (to co locate with the Airgradient sensors)
 
-```{r}
+```{r, eval=FALSE}
 
 api_key<-Sys.getenv("PURPLE_AIR_API_KEY")
 
@@ -401,7 +401,7 @@ nrow(Purpleair_Calibration_data)
 
 #10/5/26: adding additional Airgradient sensors to the database based on a file sent by a former student CLEAR lab employee several months ago
 
-```{r}
+```{r, eval=FALSE}
 
 Airgradient_sensor_information<-dbGetQuery(con, "SELECT * FROM Airgradient_sensor_information")
 
@@ -578,7 +578,7 @@ This appended 3,025,729 rows to Purpleair_air_history.
 
 I investigating the trend in the number of sensors reporting data on each day throughout the year 2026 as a time series.
 
-```{r}
+```{r, eval=FALSE}
 
 Purpleair_2026_historical_data<-dbGetQuery(con, "SELECT * FROM Purpleair_air_history WHERE time_stamp >= '2026-01-01 00:00:00'")
 
@@ -616,14 +616,6 @@ Purpleair_sensors_reporting
 ```
 
 When I initially generated this plot, the line was at 1-3 sensors for the entire period from January 1 to June 1. I suspect this is because I initially set the sensor_activity_status column based on a static 30 day threshold and only recently (on 9/21/26) changed the column definition to a moving 30 day threshold relative to the current date. 
-
-Here is what the initial plot looked like:
-
-```{r, echo=FALSE, fig.cap="My Screenshot Caption", out.width="75%", fig.align="center"}
-knitr::include_graphics("/Users/justinpeabody/Desktop/CLEAR lab database mangement 26-27/CLEAR_lab_database_work/Initial_line_graph.png")
-
-
-```
 
 I then backfilled the sensor data that was unaccounted for prior to me changing the column definition (going up to the current date just to be safe).
 
@@ -683,18 +675,19 @@ I then cleaned the duplicates out of Purpleair_air_history.
 
 duplicate_historical_records<- dbGetQuery(con, 
                                 "SELECT
-    sensor_index, time_stamp, humidity, temperature, pressure, pm2p5_cf_1_a, pm2p5_cf_1_b, rssi, pm2p5_diff,
-    COUNT(*) AS n
+    sensor_index, time_stamp, COUNT(*) AS n
 FROM Purpleair_air_history
-GROUP BY sensor_index, time_stamp, humidity, temperature, pressure, pm2p5_cf_1_a, pm2p5_cf_1_b, rssi, pm2p5_diff
+GROUP BY sensor_index, time_stamp
 HAVING COUNT(*) > 1")
+
+nrow(duplicate_historical_records)
 
 dbExecute(con, "
 WITH duplicates AS (
     SELECT *,
            ROW_NUMBER() OVER (
-               PARTITION BY sensor_index, time_stamp, humidity, temperature, pressure, pm2p5_cf_1_a, pm2p5_cf_1_b, rssi, pm2p5_diff
-               ORDER BY sensor_index, time_stamp, humidity, temperature, pressure, pm2p5_cf_1_a, pm2p5_cf_1_b, rssi, pm2p5_diff) 
+               PARTITION BY sensor_index, time_stamp
+               ORDER BY sensor_index, time_stamp) 
                AS rn
     FROM Purpleair_air_history)
 DELETE FROM duplicates
@@ -705,4 +698,262 @@ WHERE rn > 1")
 This removed 240,242 duplicate records, which is far fewer than the number of records added to the database.
 
 
+11/9/26: Revising the air_history table of each sensor company to include a pull_id column, like the trigger_pulls tables. When creating an ER diagram of the database using dBeaver, I realized that I could only make connections between the air_history tables and the sensor_information tables because these tables share a sensor_index field. The pull_id field in the trigger_pulls tables is not shared with any other table, preventing me from making connections to the trigger_pulls tables.
+
+```{r, eval=FALSE}
+
+dbExecute(con, "ALTER TABLE Purpleair_air_history ADD pull_id INT") #This ensures that all current rows in the table recieve a NULL value for the pull_id column, but subsequent rows appended later will have valid integer values (guidance from Microsoft Learn)
+
+a<-dbGetQuery(con, "SELECT * FROM Purpleair_trigger_pulls")
+
+b<-dbGetQuery(con, "SELECT pull_id FROM Purpleair_air_history")
+head(b, 10)
+
+```
+
+To reflect these changes when I run the PurpleAir_24_hour update script, I will modify the update script so that it does not append the new historical data to the database until the pull_id value from the new row of trigger_pulls is supplied to all the values of the new historical dataframe. Specifically, I changed the historical data/metadata about historical pull part of the update script from this:
+
+
+```{r, eval=FALSE}
+
+### 4. Fetch and Process Historical Data
+
+#Wrap historical steps in an IF block to prevent errors if 0 sensors need updates
+
+if (length(updated_sensors) > 0) { 
+  
+  current_time <- Sys.time()
+  time_query <- dbGetQuery(con, "SELECT MAX(time_stamp) AS time_stamp FROM Purpleair_air_history")
+  initial_time<-time_query$time_stamp
+  
+  start_date_str <- format(initial_time,  format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
+  end_date_str   <- format(current_time, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
+  
+  update_raw<-NULL
+  
+  tryCatch({update_raw = getSensorHistory(
+    sensorIndex = updated_sensors, 
+    apiReadKey=Purpleair_api_key,
+    startDate=start_date_str,
+    endDate=end_date_str,
+    average='0', 
+    fields=c('humidity', 'temperature', 'pressure', 'pm2.5_cf_1_a', 'pm2.5_cf_1_b', 'rssi')
+  )
+  
+  cat(
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    "- Pulled previous 24 hours of historical data\n"
+  )}, error= function(e) {
+    cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "- ERROR: Purpleair API history pull failed:", conditionMessage(e), "\n")
+  })
+  
+  if (!is.null(update_raw) && nrow(update_raw) > 0) {
+  
+  update_clean = update_raw %>% 
+    mutate(
+      pm2p5_cf_1_a = `pm2.5_cf_1_a`,
+      pm2p5_cf_1_b = `pm2.5_cf_1_b`,
+      pm2p5_diff   = pm2p5_cf_1_a - pm2p5_cf_1_b)%>%
+    select(sensor_index, time_stamp, humidity, temperature, pressure,
+           pm2p5_cf_1_a = `pm2.5_cf_1_a`, pm2p5_cf_1_b = `pm2.5_cf_1_b`, rssi, pm2p5_diff)
+  
+  cat(
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    "- Processed and cleaned historical data\n"
+  )
+  
+  
+  dbWriteTable(conn = con,
+               name = 'Purpleair_air_history',
+               value = update_clean,
+               append = TRUE,
+               row.names = FALSE)
+  
+  cat(
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    "- Appended historical data to air_history\n"
+  )
+  
+  sensor_list_string <- paste(sensors_pulled_log, collapse = ", ")
+  
+###5. Add metadata about the new historical pulls to the trigger_pulls table
+  
+  trigger_log_df <- data.frame(
+    pull_timestamp    = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    rows_inserted     = as.integer(nrow(update_clean)),
+    sensors_processed = sensor_list_string,
+    stringsAsFactors  = FALSE
+  )
+  
+  dbWriteTable(conn=con, name='Purpleair_trigger_pulls', value=trigger_log_df, append=TRUE, row.names=FALSE)
+  
+  cat(
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    "- Appended historical pull metadata to trigger_pulls table\n"
+  )
+  
+} else { cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "- No sensors required historical updates.\n") }
+}
+
+```
+
+
+to this:
+
+
+```{r, eval=FALSE}
+
+if (length(updated_sensors) > 0) { 
+  
+  current_time <- Sys.time()
+  time_query <- dbGetQuery(con, "SELECT MAX(time_stamp) AS time_stamp FROM Purpleair_air_history")
+  initial_time<-time_query$time_stamp
+  
+  start_date_str <- format(initial_time,  format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
+  end_date_str   <- format(current_time, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
+  
+  update_raw<-NULL
+  
+  tryCatch({update_raw = getSensorHistory(
+    sensorIndex = updated_sensors, 
+    apiReadKey=Purpleair_api_key,
+    startDate=start_date_str,
+    endDate=end_date_str,
+    average='0', 
+    fields=c('humidity', 'temperature', 'pressure', 'pm2.5_cf_1_a', 'pm2.5_cf_1_b', 'rssi')
+  )
+  
+  cat(
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    "- Pulled previous 24 hours of historical data\n"
+  )}, error= function(e) {
+    cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "- ERROR: Purpleair API history pull failed:", conditionMessage(e), "\n")
+  })
+  
+  if (!is.null(update_raw) && nrow(update_raw) > 0) {
+  
+  update_clean = update_raw %>% 
+    mutate(
+      pm2p5_cf_1_a = `pm2.5_cf_1_a`,
+      pm2p5_cf_1_b = `pm2.5_cf_1_b`,
+      pm2p5_diff   = pm2p5_cf_1_a - pm2p5_cf_1_b)%>%
+    select(sensor_index, time_stamp, humidity, temperature, pressure,
+           pm2p5_cf_1_a = `pm2.5_cf_1_a`, pm2p5_cf_1_b = `pm2.5_cf_1_b`, rssi, pm2p5_diff)
+  
+  cat(
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    "- Processed and cleaned historical data\n"
+  )
+  
+ #Notice that I do not append the new historical data to Purpleair_air_history yet
+  
+  sensor_list_string <- paste(sensors_pulled_log, collapse = ", ")
+  
+###5. Add metadata about the new historical pulls to the trigger_pulls table
+  
+  trigger_log_df <- data.frame(
+    pull_timestamp    = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    rows_inserted     = as.integer(nrow(update_clean)),
+    sensors_processed = sensor_list_string,
+    stringsAsFactors  = FALSE
+  )
+  
+  dbWriteTable(conn=con, name='Purpleair_trigger_pulls', value=trigger_log_df, append=TRUE, row.names=FALSE)
+  
+    cat(
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    "- Appended historical pull metadata to trigger_pulls table\n"
+  )
+
+  Max_pull_timestamp<-dbGetQuery(con, "SELECT MAX(pull_timestamp) FROM Purpleair_trigger_pulls")
+  Max_pull_time_stamp<-ymd_hms(Max_pull_timestamp[1,1])
+  New_pull_id<-dbGetQuery(con, "SELECT pull_id FROM Purpleair_trigger_pulls WHERE pull_timestamp=?", params=list(Max_pull_time_stamp))
+New_pull_id_integer=as.numeric(New_pull_id[1,1])
+  
+  ###The new part: Querying the most recent value of pull_id from PurpleAir_trigger_pulls (the value corresponding to the most recent row of historical update metadata)
+  
+  update_clean_with_pull_id<-update_clean%>%
+    mutate(pull_id=rep(New_pull_id_integer, nrow(update_clean))) #Populating a pull_id column for the new historical dataframe containing the new value of pull_id (a one to many relationship exists between the pull_id in trigger_pulls and the pull_id in air_history)
+  
+    dbWriteTable(conn = con,
+               name = 'Purpleair_air_history',
+               value = update_clean_with_pull_id,
+               append = TRUE,
+               row.names = FALSE) 
+    
+    #I wait to append the new historical data until AFTER I append the historical pull metadata and add the pull_id column with the corresponding value of pull_id to the new historical data
+    
+  
+} else { cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "- No sensors required historical updates.\n") }
+}
+
+```
+
+The old workflow for this part of the script:
+
+Retrieve new historical data --> Clean up historical data column names to match database schema --> Append new historical data to Purpleair_air_history --> obtain metadata about historical pull --> Append historical pull metadata to Purpleair_trigger_pulls
+
+The new workflow:
+
+Retrieve new historical data --> Clean up historical data column names to match database schema  --> obtain metadata about historical pull  --> Append historical pull metadata to Purpleair_trigger_pulls --> query newest pull_id from Purpleair_trigger_pulls --> Append new pull_id to new historical data --> Append new historical data to Purpleair_air_history
+
+
+I then repeated these steps for the Clarity and AirGradient sensors, along with corresponding changes to the update scripts. 
+
+```{r, eval=FALSE}
+
+dbExecute(con, "ALTER TABLE Clarity_air_history ADD pull_id INT")
+
+a<-dbGetQuery(con, "SELECT * FROM Clarity_trigger_pulls")
+
+b<-dbGetQuery(con, "SELECT pull_id FROM Clarity_air_history")
+head(b, 10)
+
+a
+```
+
+```{r, eval=FALSE}
+
+
+dbExecute(con, "ALTER TABLE Airgradient_air_history ADD pull_id INT")
+
+
+```
+
+11/10/26: Downloading historical measurements from EPA sensors using the AirNow R package, which enables data retrieval from the AirNow API
+
+```{r, eval=FALSE}
+
+install.packages("airnow")
+
+```
+
+First, I must instantiate the API key that was randomly generated by the AirNow API Portal when I created a personal account.
+
+```{r}
+
+library(airnow)
+set_airnow_token(token="786FD9B7-737A-43E8-8E1D-CDFA43083F67", ask=is_interactive())
+get_airnow_token(ask=is_interactive())
+
+```
+
+Test query: retrieving 1 day of historical measurements for EPA sensors in Chicago
+
+```{r, eval=FALSE}
+box=c(-87.94009, 41.64458, -87.52509, 42.02295)
+test_historical_data<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters="pm25",
+                                      start_time="2026-11-10 00:00:00",
+                                      end_time="2026-11-11 00:00:00",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=FALSE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_token())
+
+packageVersion("airnow")
+
+```
 
