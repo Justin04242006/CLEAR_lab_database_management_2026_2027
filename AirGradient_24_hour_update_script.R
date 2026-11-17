@@ -190,7 +190,59 @@ for (i in sensoridsvec) {
   sensors_pulled_log <- c(sensors_pulled_log, as.character(i)) 
   sensor_list_string <- paste(sensors_pulled_log, collapse = ", ")}
 
-#5. Updating sensor metadata with new last_seen timestamps based on the updated air_history table
+
+#5. Update trigger_pulls table 
+
+trigger_log_df <- data.frame(
+  pull_timestamp    = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+  rows_inserted     = as.integer(nrow(New_airgradient_historical_data)),
+  sensors_processed = sensor_list_string,
+  stringsAsFactors  = FALSE
+)
+
+dbWriteTable(conn=con, name='Airgradient_trigger_pulls', value=trigger_log_df, append=TRUE, row.names=FALSE)
+
+cat(
+  format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+  "- Appended historical pull metadata to trigger_pulls table\n"
+)
+
+New_pull_id<-dbGetQuery(con, "SELECT TOP 1 pull_id FROM Airgradient_trigger_pulls ORDER BY pull_id DESC")
+
+New_pull_id_integer<-as.numeric(New_pull_id$pull_id[1])
+
+update_clean_with_pull_id<-New_airgradient_historical_data%>%
+  mutate(pull_id=New_pull_id_integer)%>%
+  distinct(locationID, timestamp, .keep_all=TRUE)
+
+#6. Append historical data to air_history table
+
+if (nrow(update_clean_with_pull_id) > 0){
+  dbWriteTable(conn=con,
+               name='Airgradient_air_history',
+               value=update_clean_with_pull_id,
+               append=TRUE,
+               overwrite=FALSE,
+               row.names=FALSE)
+
+cat(
+  format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+  "- Successfully appended",
+  nrow(update_clean_with_pull_id),
+  "new historical observations\n"
+)
+
+} else {
+  
+  cat(
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    "- No new observations to append.\n"
+  )
+  
+}
+
+#7. Updating sensor metadata with new last_seen timestamps based on the updated air_history table
+#Unlike the Purpleair update script, this script and the Clarity update script updates the metadata AFTER updating the historical data, because the last_seen field is not native to the AirGradient or Clarity APIs. 
 
 Airgradient_sensor_information<-dbGetQuery(con, "SELECT * FROM Airgradient_sensor_information")
 Airgradient_air_history<-dbGetQuery(con, "SELECT locationID, timestamp FROM Airgradient_air_history")
@@ -226,59 +278,8 @@ cat(
   "- Updated sensor metadata\n"
 )
 
-#6. Update trigger_pulls table 
-
-trigger_log_df <- data.frame(
-  pull_timestamp    = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-  rows_inserted     = as.integer(nrow(New_airgradient_historical_data)),
-  sensors_processed = sensor_list_string,
-  stringsAsFactors  = FALSE
-)
-
-dbWriteTable(conn=con, name='Airgradient_trigger_pulls', value=trigger_log_df, append=TRUE, row.names=FALSE)
-
-cat(
-  format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-  "- Appended historical pull metadata to trigger_pulls table\n"
-)
-
-New_pull_id<-dbGetQuery(con, "SELECT TOP 1 pull_id FROM Airgradient_trigger_pulls ORDER BY pull_id DESC")
-
-New_pull_id_integer<-as.numeric(New_pull_id$pull_id[1])
-
-update_clean_with_pull_id<-New_airgradient_historical_data%>%
-  mutate(pull_id=New_pull_id_integer)%>%
-  distinct(locationID, timestamp, .keep_all=TRUE)
-
-
-if (nrow(update_clean_with_pull_id) > 0){
-  dbWriteTable(conn=con,
-               name='Airgradient_air_history',
-               value=update_clean_with_pull_id,
-               append=TRUE,
-               overwrite=FALSE,
-               row.names=FALSE)
-
-cat(
-  format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-  "- Successfully appended",
-  nrow(update_clean_with_pull_id),
-  "new historical observations\n"
-)
-
-} else {
-  
-  cat(
-    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-    "- No new observations to append.\n"
-  )
-  
-} 
-
-#7. Disconnect cleanly
+#8. Disconnect cleanly
 
 dbDisconnect(con)
 cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "- Script finished executing and disconnected cleanly.\n")
 
-Sys.setenv("PURPLE_AIR_API_KEY"="F38F115A-78CA-11EE-A8AF-42010A80000A")
-Sys.setenv("LUC_CLEAR_AIRGRADIENT_API_KEY"="3dee03db-d2a7-443c-b8ba-85d2e7ebd8b1")
