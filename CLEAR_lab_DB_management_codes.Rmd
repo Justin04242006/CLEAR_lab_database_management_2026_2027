@@ -6,7 +6,8 @@ output: md_document
 keep_md: true
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, eval=FALSE}
+
 knitr::opts_chunk$set(echo = TRUE)
 
 source("getPurpleairSensors_debugged.R") #This is an edited version of the getPurpleairSensors() function native to the PurpleAir API, which I altered to acommodate the additional fields in the updated database schema.
@@ -16,7 +17,7 @@ source("getPurpleairSensors_debugged.R") #This is an edited version of the getPu
 
 This file contains all the code I used to query and update the CLEAR lab air quality database during my role as CLEAR lab Database Manager during the 2026-2027 school year. The role commenced on September 21, 2026. 
 
-```{r}
+```{r, eval=FALSE}
 
 library(tidyverse)
 library(readxl)
@@ -186,7 +187,7 @@ dbWriteTable(con,
 
 I downloaded historical Airgradient sensor data for 7/5/26-7/20/26 (the week with the worst air quality of the summer in the Chicago area and the week prior to that), in order to provide the data to two graduate students working in the lab, so they could use it for a co-location study.
 
-```{r}
+```{r, eval=FALSE}
 
 Sys.getenv("LUC_CLEAR_AIRGRADIENT_API_KEY")
 
@@ -266,6 +267,2195 @@ July_5_thru_20_Airgradient_Data<-write.csv(July_5_thru_20_Airgradient_data, file
 ### 9/30/26: downloading all Airgradient data between 7pm on 9/28 and 7pm on 9/30 for the co-location study
 
 
+```{r, eval=FALSE}
+
+
+library(httr)
+library(jsonlite)
+library(dplyr)
+token=Sys.getenv("LUC_CLEAR_AIRGRADIENT_API_KEY")
+location_ids <- c("190848", "190849", "190850", "190851", "190852", "190853", "190854", "190855", "190856", "190857", "190858", "190859", "190860", "190861", "190862", "190863", "190864")
+
+all_data_9_28_thru_30 <- list()
+
+for (id in location_ids){
+  url <- paste0("https://api.airgradient.com/public/api/v1/locations/", id, "/measures/past")
+  
+  response <- GET(
+    url,
+    query = list(
+      token = token,
+      from = "2026-09-27",
+      to   = "2026-10-01")
+  )
+  
+  if (status_code(response) != 200) {
+    warning("Request failed for sensor ", id, " with status ", status_code(response))
+    next
+  }
+  
+  json_text <- content(response, as = "text", encoding = "UTF-8")
+  df <- fromJSON(json_text, flatten = TRUE)
+  
+  df$location_id <- id
+  
+  all_data_9_28_thru_30[[id]] <- df
+}
+
+final_df <- bind_rows(all_data_9_28_thru_30)
+
+nrow(final_df)
+
+
+
+New_airgradient_historical_data<-final_df%>%
+  select(location_id, locationName, timestamp, pm01, pm01_corrected, pm02, pm02_corrected, pm10, pm10_corrected, atmp, atmp_corrected, rhum, rhum_corrected, rco2, rco2_corrected, tvoc)
+
+New_airgradient_historical_data$timestamp <- as.POSIXct(
+  New_airgradient_historical_data$timestamp,
+  format = "%Y-%m-%dT%H:%M:%OS",
+  tz = "UTC")
+
+max(New_airgradient_historical_data$timestamp)
+head(New_airgradient_historical_data$timestamp)
+sum(is.na(New_airgradient_historical_data$timestamp))
+
+New_airgradient_historical_data_filtered<-New_airgradient_historical_data%>%
+filter(timestamp <= as.POSIXct("2026-09-30 19:00:00"))
+
+max(New_airgradient_historical_data_filtered$timestamp)
+class(New_airgradient_historical_data_filtered$timestamp)
+
+cutoff_1 <- as.POSIXct(
+  "2026-09-30 19:00:00",
+  tz = "UTC"
+)
+
+cutoff_2 <- as.POSIXct(
+  "2026-09-28 17:00:00",
+  tz = "UTC"
+)
+
+New_airgradient_historical_data_filtered <-
+  New_airgradient_historical_data %>%
+  filter(timestamp <= cutoff_1 & timestamp >= cutoff_2)
+
+max(New_airgradient_historical_data_filtered$timestamp)
+min(New_airgradient_historical_data_filtered$timestamp)
+
+Airgradient_calibration_data<-write.csv(New_airgradient_historical_data_filtered, file="Airgradient_sensor_calibration_data.csv", row.names=FALSE)
+
+Airgradient_Calibration_data<-read_csv("~/Desktop/CLEAR lab database mangement 26-27/CLEAR_lab_database_work/Airgradient_sensor_calibration_data.csv")
+
+nrow(Airgradient_Calibration_data)
+
+```
+
+### 10/1/26: downloading historical data for four Purpleair sensors between 7pm on 9/28 and 7pm on 9/30 for the co-location study (to co locate with the Airgradient sensors)
+
+```{r, eval=FALSE}
+
+api_key<-Sys.getenv("PURPLE_AIR_API_KEY")
+
+sensor_index<-c("304768", "309628", "309644", "310423")
+
+
+start_date <- "2026-09-28"
+end_date   <- "2026-09-30"
+average <- "0" 
+fields <- c(
+  "humidity",
+  "temperature",
+  "pressure",
+  "pm2.5_cf_1_a",
+  "pm2.5_cf_1_b",
+  "rssi"
+)
+
+historical_data <- getSensorHistory(
+  sensorIndex = sensor_index,
+  apiReadKey  = api_key,
+  startDate   = start_date,
+  endDate     = end_date,
+  fields      = fields,
+  average     = average
+)
+
+nrow(historical_data)
+
+table(historical_data$sensor_index)
+
+max(historical_data$time_stamp)
+
+historical_data<-historical_data%>%
+filter(time_stamp >= "2026-09-28 18:58:00" & time_stamp <= "2026-09-30 19:02:00")
+
+Purpleair_calibration_data<-write.csv(historical_data, file="Purple_air_sensor_calibration_data.csv", row.names=FALSE)
+
+Purpleair_Calibration_data<-read_csv("~/Desktop/CLEAR lab database mangement 26-27/CLEAR_lab_database_work/Purple_air_sensor_calibration_data.csv")
+
+nrow(Purpleair_Calibration_data)
+
+
+```
+
+
+#10/5/26: adding additional Airgradient sensors to the database based on a file sent by a former student CLEAR lab employee several months ago
+
+```{r, eval=FALSE}
+
+Airgradient_sensor_information<-dbGetQuery(con, "SELECT * FROM Airgradient_sensor_information")
+
+library(httr)
+library(jsonlite)
+library(dplyr)
+token <- Sys.getenv("LUC_CLEAR_AIRGRADIENT_API_KEY")
+location_ids <- c("59983", "59297", "163250", "75775", "171390", "163298", "58933", "77131")
+
+from_time = format(Sys.time() - 864000, "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
+to_time   = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
+
+all_data <- list()
+
+for (id in location_ids){
+  url <- paste0("https://api.airgradient.com/public/api/v1/locations/", id, "/measures/past")
+  
+  response <- GET(
+    url,
+    query = list(
+      token = token,
+      from = from_time,
+      to   = to_time)
+  )
+  
+  if (status_code(response) != 200) {
+    warning("Request failed for sensor ", id, " with status ", status_code(response))
+    next
+  }
+  
+  json_text <- content(response, as = "text", encoding = "UTF-8")
+  df <- fromJSON(json_text, flatten = TRUE)
+  
+  df$location_id <- id
+  
+  all_data[[id]] <- df
+}
+
+Airgradient_chunk_1 <- bind_rows(all_data)
+
+
+
+Airgradient_chunk_1
+
+```
+None of these sensors contained any sensor metadata or historical data on the API. My supervisor told me to revisit this at a later point after she had done some investigating as to why this is the case. 
+
+
+### 10/12/26: downloading PurpleAir data based on a list of sensor indices Dr. Whalen sent me (after updating all three databases with their respective update scripts). Some of these sensors are in the city of Chicago proper, while others are outside the city but within Cook County. 
+
+### Dr. Whalen wanted me to add all the sensors to the metadata table, but to only add historical data from the Chicago city sensors (this means marking the Cook County sensors as inactive/not pulling in Chicago in the metadata table).
+
+```{r, eval=FALSE}
+
+library(tidyverse)
+New_sensors_to_add<-read_csv("~/Desktop/CLEAR lab database mangement 26-27/CLEAR_lab_database_work/purple air sensors.csv")
+sensor_indices<-c()
+New_sensors_to_add<-New_sensors_to_add%>%
+filter(sensor_index != 'NA')
+for (i in New_sensors_to_add$sensor_index){
+  sensor_indices<-c(sensor_indices, i)}
+
+
+fields=c("date_created", "last_seen", "name", "location_type", "model", "hardware", "latitude", "longitude", "private")
+api_key<-Sys.getenv("PURPLE_AIR_API_KEY")
+new_metadata<-getPurpleairSensors_debugged(apiReadKey = api_key, fields=fields)
+new_metadata<-new_metadata%>%
+filter(sensor_index %in% sensor_indices)
+Unknown_sensor<-New_sensors_to_add%>%
+filter(sensor_index !in c(new_metadata$sensor_index))
+
+new_sensor_indices_retrieved<-new_metadata$sensor_index
+print(New_sensors_to_add$sensor_index[which(!(New_sensors_to_add$sensor_index %in% new_sensor_indices_retrieved))])
+#The index 171443 was not in the downloaded metadata. I will try downloading this sensor's metadata separately.
+
+sensor_171443_metadata<-new_metadata%>%
+filter(sensor_index==171443)
+nrow(sensor_171443_metadata)
+#This did not return any metadata for the sensor. I will add the other 41 sensors to the database and discuss this pesky individual with Dr. Whalen.
+
+colnames(new_metadata)
+
+#Moving the 'private' column after the 'longitude' column to match the structure of the database (AI helped me here; I had not seen this method before)
+
+library(dplyr)
+new_metadata <- new_metadata %>% relocate(private, .after = longitude)
+
+new_metadata<-new_metadata%>%
+mutate(temp_date_column=as.Date(last_seen))%>%
+mutate(sensor_activity_status=case_when(
+  temp_date_column>=Sys.Date()-30 ~ "Active",
+  temp_date_column < Sys.Date()-30 ~ "Inactive"
+))
+
+#We want the metadata for all these sensors, but we don't want the historical data for the non Chicago sensors.
+Non_Chicago_sensors<-New_sensors_to_add%>%
+filter(Location != "Chicago")%>%
+select(sensor_index)
+Non_Chicago_sensor_indices<-Non_Chicago_sensors$sensor_index
+
+#This means I need to set the sensor_activity_status column to Inactive for the sensor indices from the Cook County Suburbs (all of the sensors are currently Active based on their last_seen date).
+
+new_metadata<-new_metadata%>%
+left_join(New_sensors_to_add, by=c("sensor_index"="sensor_index"))
+
+new_metadata<-new_metadata%>%
+mutate(sensor_activity_status=case_when(
+  Location=="Chicago" ~ "Active",
+  Location=="Cook County Suburbs" ~ "Inactive (not pulling in Chicago)"
+))
+
+New_metadata<-new_metadata%>%
+select(sensor_index, date_created, last_seen, name.y, location_type, model, hardware, latitude.y, longitude.y, private, sensor_activity_status)
+colnames(New_metadata)[4]="name"
+colnames(New_metadata)[8]="latitude"
+colnames(New_metadata)[9]="longitude"
+
+dbWriteTable(
+  con,
+  name="Purpleair_sensor_information",
+  value=New_metadata, 
+  append=TRUE,
+  row.names=FALSE)
+
+c<-dbGetQuery(con, "SELECT * FROM Purpleair_sensor_information")
+
+#Now, I need to download and append the historical data for the Chicago sensors.
+
+Chicago_Sensors<-New_sensors_to_add%>%
+filter(Location=="Chicago")
+Chicago_sensor_indices<-Chicago_Sensors$sensor_index #There are 23 such sensors
+
+sensor_index=Chicago_sensor_indices
+
+start_date <- "2018-01-01"
+end_date   <- "2026-10-12"
+average <- "0" 
+fields <- c(
+  "humidity",
+  "temperature",
+  "pressure",
+  "pm2.5_cf_1_a",
+  "pm2.5_cf_1_b",
+  "rssi"
+)
+
+historical_data <- getSensorHistory(
+  sensorIndex = sensor_index,
+  apiReadKey  = api_key,
+  startDate   = start_date,
+  endDate     = end_date,
+  fields      = fields,
+  average     = average
+)
+
+nrow(historical_data)
+
+table(historical_data$sensor_index)
+
+max(historical_data$time_stamp)
+
+dbWriteTable(con,
+             name="Purpleair_air_history",
+             value=historical_data, 
+             append=TRUE,
+             row.names=FALSE)
+```
+
+
+This appended 3,025,729 rows to Purpleair_air_history.
+
+
+### 10/18/26: investigating the number of sensors reporting throughout 2026
+
+I investigating the trend in the number of sensors reporting data on each day throughout the year 2026 as a time series.
+
+```{r, eval=FALSE}
+
+Purpleair_2026_historical_data<-dbGetQuery(con, "SELECT * FROM Purpleair_air_history WHERE time_stamp >= '2026-01-01 00:00:00'")
+
+Purpleair_2026_investigation_data<-Purpleair_2026_historical_data%>%
+mutate(Date=as.Date(time_stamp))%>%
+arrange(Date)
+
+Date_list<-as.Date(character())
+Reporting_sensors_list<-c()
+
+for(i in unique(Purpleair_2026_investigation_data$Date)){
+  new_data<-Purpleair_2026_investigation_data%>%
+  filter(Date==i)
+  Date_list<-c(Date_list, i)
+  print(i)
+  Num_distinct_reporting_sensors<-length(unique(new_data$sensor_index))
+  Reporting_sensors_list<-c(Reporting_sensors_list, Num_distinct_reporting_sensors)}
+
+dates_targeted_inquiry<-as.Date(character())
+for (i in Date_list){
+  index=which(Date_list==i)
+  if (Reporting_sensors_list[index] <= 5){
+    dates_targeted_inquiry<-c(dates_targeted_inquiry, Date_list[index])}
+}
+
+ts_data_frame<-data.frame(Date=Date_list, Num_sensors_reporting=Reporting_sensors_list)
+
+#Creating the time series
+
+library(plotly)
+Purpleair_sensors_reporting<-plot_ly(data=ts_data_frame, x=~Date, y=~Num_sensors_reporting, type="scatter", mode="lines", col="blue")%>%
+layout(yaxis=list(range=c(0,80)))
+Purpleair_sensors_reporting
+
+```
+
+When I initially generated this plot, the line was at 1-3 sensors for the entire period from January 1 to June 1. I suspect this is because I initially set the sensor_activity_status column based on a static 30 day threshold and only recently (on 9/21/26) changed the column definition to a moving 30 day threshold relative to the current date. 
+
+I then backfilled the sensor data that was unaccounted for prior to me changing the column definition (going up to the current date just to be safe).
+
+```{r, eval=FALSE}
+
+
+vec<-unique(Purpleair_2026_historical_data$sensor_index)
+
+sensor_index <- vec
+
+start_date <- "2026-01-01"
+end_date   <- "2026-10-18"
+average <- "60"  
+fields <- c(
+  "humidity",
+  "temperature",
+  "pressure",
+  "pm2.5_cf_1_a",
+  "pm2.5_cf_1_b",
+  "rssi"
+)
+
+historical_data <- getSensorHistory(
+  sensorIndex = sensor_index,
+  apiReadKey  = api_key,
+  startDate   = start_date,
+  endDate     = end_date,
+  average     = average,
+  fields      = fields
+)
+
+nrow(historical_data)
+
+table(historical_data$sensor_index)
+colnames(historical_data)
+historical_data<-historical_data%>%
+mutate(pm_2p5_diff=pm2.5_cf_1_a-pm2.5_cf_1_b)%>%
+mutate(pm2p5_cf_1_a=pm2.5_cf_1_a, pm2p5_cf_1_b=pm2.5_cf_1_b)
+
+library(dplyr)
+historical_data<-historical_data %>% 
+relocate(sensor_index, .before = time_stamp)%>%
+relocate(humidity, .before = rssi)%>%
+relocate(pm_2p5_diff, .after=pm2p5_cf_1_b)%>%
+relocate(rssi, .before=pm_2p5_diff)%>%
+  
+historical_data<-historical_data%>%
+select(-pm2.5_cf_1_a, -pm2.5_cf_1_b)
+colnames(historical_data)[9]="pm2p5_diff"
+
+
+```
+
+I then cleaned the duplicates out of Purpleair_air_history.
+
+```{r, eval=FALSE}
+
+duplicate_historical_records<- dbGetQuery(con, 
+                                "SELECT
+    sensor_index, time_stamp, COUNT(*) AS n
+FROM Purpleair_air_history
+GROUP BY sensor_index, time_stamp
+HAVING COUNT(*) > 1")
+
+nrow(duplicate_historical_records)
+
+dbExecute(con, "
+WITH duplicates AS (
+    SELECT *,
+           ROW_NUMBER() OVER (
+               PARTITION BY sensor_index, time_stamp
+               ORDER BY sensor_index, time_stamp) 
+               AS rn
+    FROM Purpleair_air_history)
+DELETE FROM duplicates
+WHERE rn > 1")
+
+```
+
+This removed 240,242 duplicate records, which is far fewer than the number of records added to the database.
+
+
+
+# November 2026:
+
+
+
+11/9/26: Revising the air_history table of each sensor company to include a pull_id column, like the trigger_pulls tables. When creating an ER diagram of the database using dBeaver, I realized that I could only make connections between the air_history tables and the sensor_information tables because these tables share a sensor_index field. The pull_id field in the trigger_pulls tables is not shared with any other table, preventing me from making connections to the trigger_pulls tables.
+
+```{r, eval=FALSE}
+
+dbExecute(con, "ALTER TABLE Purpleair_air_history ADD pull_id INT") #This ensures that all current rows in the table recieve a NULL value for the pull_id column, but subsequent rows appended later will have valid integer values (guidance from Microsoft Learn)
+
+a<-dbGetQuery(con, "SELECT * FROM Purpleair_trigger_pulls")
+
+b<-dbGetQuery(con, "SELECT pull_id FROM Purpleair_air_history")
+head(b, 10)
+
+```
+
+To reflect these changes when I run the PurpleAir_24_hour update script, I will modify the update script so that it does not append the new historical data to the database until the pull_id value from the new row of trigger_pulls is supplied to all the values of the new historical dataframe. Specifically, I changed the historical data/metadata about historical pull part of the update script from this:
+
+
+```{r, eval=FALSE}
+
+### 4. Fetch and Process Historical Data
+
+#Wrap historical steps in an IF block to prevent errors if 0 sensors need updates
+
+if (length(updated_sensors) > 0) { 
+  
+  current_time <- Sys.time()
+  time_query <- dbGetQuery(con, "SELECT MAX(time_stamp) AS time_stamp FROM Purpleair_air_history")
+  initial_time<-time_query$time_stamp
+  
+  start_date_str <- format(initial_time,  format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
+  end_date_str   <- format(current_time, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
+  
+  update_raw<-NULL
+  
+  tryCatch({update_raw = getSensorHistory(
+    sensorIndex = updated_sensors, 
+    apiReadKey=Purpleair_api_key,
+    startDate=start_date_str,
+    endDate=end_date_str,
+    average='0', 
+    fields=c('humidity', 'temperature', 'pressure', 'pm2.5_cf_1_a', 'pm2.5_cf_1_b', 'rssi')
+  )
+  
+  cat(
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    "- Pulled previous 24 hours of historical data\n"
+  )}, error= function(e) {
+    cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "- ERROR: Purpleair API history pull failed:", conditionMessage(e), "\n")
+  })
+  
+  if (!is.null(update_raw) && nrow(update_raw) > 0) {
+  
+  update_clean = update_raw %>% 
+    mutate(
+      pm2p5_cf_1_a = `pm2.5_cf_1_a`,
+      pm2p5_cf_1_b = `pm2.5_cf_1_b`,
+      pm2p5_diff   = pm2p5_cf_1_a - pm2p5_cf_1_b)%>%
+    select(sensor_index, time_stamp, humidity, temperature, pressure,
+           pm2p5_cf_1_a = `pm2.5_cf_1_a`, pm2p5_cf_1_b = `pm2.5_cf_1_b`, rssi, pm2p5_diff)
+  
+  cat(
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    "- Processed and cleaned historical data\n"
+  )
+  
+  
+  dbWriteTable(conn = con,
+               name = 'Purpleair_air_history',
+               value = update_clean,
+               append = TRUE,
+               row.names = FALSE)
+  
+  cat(
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    "- Appended historical data to air_history\n"
+  )
+  
+  sensor_list_string <- paste(sensors_pulled_log, collapse = ", ")
+  
+###5. Add metadata about the new historical pulls to the trigger_pulls table
+  
+  trigger_log_df <- data.frame(
+    pull_timestamp    = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    rows_inserted     = as.integer(nrow(update_clean)),
+    sensors_processed = sensor_list_string,
+    stringsAsFactors  = FALSE
+  )
+  
+  dbWriteTable(conn=con, name='Purpleair_trigger_pulls', value=trigger_log_df, append=TRUE, row.names=FALSE)
+  
+  cat(
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    "- Appended historical pull metadata to trigger_pulls table\n"
+  )
+  
+} else { cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "- No sensors required historical updates.\n") }
+}
+
+```
+
+
+to this:
+
+
+```{r, eval=FALSE}
+
+if (length(updated_sensors) > 0) { 
+  
+  current_time <- Sys.time()
+  time_query <- dbGetQuery(con, "SELECT MAX(time_stamp) AS time_stamp FROM Purpleair_air_history")
+  initial_time<-time_query$time_stamp
+  
+  start_date_str <- format(initial_time,  format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
+  end_date_str   <- format(current_time, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
+  
+  update_raw<-NULL
+  
+  tryCatch({update_raw = getSensorHistory(
+    sensorIndex = updated_sensors, 
+    apiReadKey=Purpleair_api_key,
+    startDate=start_date_str,
+    endDate=end_date_str,
+    average='0', 
+    fields=c('humidity', 'temperature', 'pressure', 'pm2.5_cf_1_a', 'pm2.5_cf_1_b', 'rssi')
+  )
+  
+  cat(
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    "- Pulled previous 24 hours of historical data\n"
+  )}, error= function(e) {
+    cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "- ERROR: Purpleair API history pull failed:", conditionMessage(e), "\n")
+  })
+  
+  if (!is.null(update_raw) && nrow(update_raw) > 0) {
+  
+  update_clean = update_raw %>% 
+    mutate(
+      pm2p5_cf_1_a = `pm2.5_cf_1_a`,
+      pm2p5_cf_1_b = `pm2.5_cf_1_b`,
+      pm2p5_diff   = pm2p5_cf_1_a - pm2p5_cf_1_b)%>%
+    select(sensor_index, time_stamp, humidity, temperature, pressure,
+           pm2p5_cf_1_a = `pm2.5_cf_1_a`, pm2p5_cf_1_b = `pm2.5_cf_1_b`, rssi, pm2p5_diff)
+  
+  cat(
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    "- Processed and cleaned historical data\n"
+  )
+  
+ #Notice that I do not append the new historical data to Purpleair_air_history yet
+  
+  sensor_list_string <- paste(sensors_pulled_log, collapse = ", ")
+  
+###5. Add metadata about the new historical pulls to the trigger_pulls table
+  
+  trigger_log_df <- data.frame(
+    pull_timestamp    = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    rows_inserted     = as.integer(nrow(update_clean)),
+    sensors_processed = sensor_list_string,
+    stringsAsFactors  = FALSE
+  )
+  
+  dbWriteTable(conn=con, name='Purpleair_trigger_pulls', value=trigger_log_df, append=TRUE, row.names=FALSE)
+  
+    cat(
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    "- Appended historical pull metadata to trigger_pulls table\n"
+  )
+
+  Max_pull_timestamp<-dbGetQuery(con, "SELECT MAX(pull_timestamp) FROM Purpleair_trigger_pulls")
+  Max_pull_time_stamp<-ymd_hms(Max_pull_timestamp[1,1])
+  New_pull_id<-dbGetQuery(con, "SELECT pull_id FROM Purpleair_trigger_pulls WHERE pull_timestamp=?", params=list(Max_pull_time_stamp))
+New_pull_id_integer=as.numeric(New_pull_id[1,1])
+  
+  ###The new part: Querying the most recent value of pull_id from PurpleAir_trigger_pulls (the value corresponding to the most recent row of historical update metadata)
+  
+  update_clean_with_pull_id<-update_clean%>%
+    mutate(pull_id=rep(New_pull_id_integer, nrow(update_clean))) #Populating a pull_id column for the new historical dataframe containing the new value of pull_id (a one to many relationship exists between the pull_id in trigger_pulls and the pull_id in air_history)
+  
+    dbWriteTable(conn = con,
+               name = 'Purpleair_air_history',
+               value = update_clean_with_pull_id,
+               append = TRUE,
+               row.names = FALSE) 
+    
+    #I wait to append the new historical data until AFTER I append the historical pull metadata and add the pull_id column with the corresponding value of pull_id to the new historical data
+    
+  
+} else { cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "- No sensors required historical updates.\n") }
+}
+
+```
+
+The old workflow for this part of the script:
+
+Retrieve new historical data --> Clean up historical data column names to match database schema --> Append new historical data to Purpleair_air_history --> obtain metadata about historical pull --> Append historical pull metadata to Purpleair_trigger_pulls
+
+The new workflow:
+
+Retrieve new historical data --> Clean up historical data column names to match database schema  --> obtain metadata about historical pull  --> Append historical pull metadata to Purpleair_trigger_pulls --> query newest pull_id from Purpleair_trigger_pulls --> Append new pull_id to new historical data --> Append new historical data to Purpleair_air_history
+
+
+I then repeated these steps for the Clarity and AirGradient sensors, along with corresponding changes to the update scripts. 
+
+```{r, eval=FALSE}
+
+dbExecute(con, "ALTER TABLE Clarity_air_history ADD pull_id INT")
+
+a<-dbGetQuery(con, "SELECT * FROM Clarity_trigger_pulls")
+
+b<-dbGetQuery(con, "SELECT pull_id FROM Clarity_air_history")
+head(b, 10)
+
+a
+```
+
+```{r, eval=FALSE}
+
+
+dbExecute(con, "ALTER TABLE Airgradient_air_history ADD pull_id INT")
+
+
+```
+
+11/10/26: Downloading historical measurements from EPA sensors using the AirNow R package, which enables data retrieval from the AirNow API
+
+```{r, eval=FALSE}
+
+install.packages("airnow")
+
+```
+
+First, I must instantiate the API key that was randomly generated by the AirNow API Portal when I created a personal account.
+
+```{r}
+
+library(airnow)
+set_airnow_key(key="786FD9B7-737A-43E8-8E1D-CDFA43083F67", ask=is_interactive())
+get_airnow_key(ask=is_interactive())
+get_airnow_key()
+```
+
+Test query: retrieving 10 days of historical measurements for EPA sensors in Chicago
+
+```{r, eval=FALSE}
+
+test_historical_data<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2026-11-01T00",
+                                      end_time="2026-11-11T00",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key())
+
+
+```
+
+11/15/26: retrieving as much historical data as I possibly can for EPA sensors in Chicago (going back as to January 2018 if possible)
+
+```{r, eval=FALSE}
+
+#November to date
+Nov_1_thru_15_2026<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2026-11-01T00",
+                                      end_time="2026-11-15T00",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #4436 observations
+
+
+#October 2026
+Oct_2026<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2026-10-01T00",
+                                      end_time="2026-10-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #12648 observations
+
+
+#September 2026
+Sep_2026<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2026-09-01T00",
+                                      end_time="2026-09-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #12075 observations
+
+
+Aug_2026<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2026-08-01T00",
+                                      end_time="2026-08-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #12635 observations
+
+
+July_2026<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2026-07-01T00",
+                                      end_time="2026-07-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #12590 observations
+
+
+June_2026<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2026-06-01T00",
+                                      end_time="2026-06-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #11930 observations
+
+
+May_2026<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2026-05-01T00",
+                                      end_time="2026-05-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #12643 observations
+
+
+April_2026<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2026-04-01T00",
+                                      end_time="2026-04-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #12230 observations
+
+
+March_2026<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2026-03-01T00",
+                                      end_time="2026-03-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #12629 observations
+
+
+Feb_2026<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2026-02-01T00",
+                                      end_time="2026-02-28T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #8318 observations
+
+
+Jan_2026<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2026-01-01T00",
+                                      end_time="2026-01-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #8010 observations
+
+library(tidyverse)
+EPA_2026_data<-bind_rows(Jan_2026, Feb_2026, March_2026, April_2026, May_2026, June_2026, July_2026, Aug_2026, Sep_2026, Oct_2026, Nov_1_thru_15_2026) #120144 total observations for 2026
+
+
+
+```
+
+I do the same for historical data before 2026.
+
+```{r, eval=FALSE}
+
+Dec_2025<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2025-12-01T00",
+                                      end_time="2025-12-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #8118 obs
+
+
+Nov_2025<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2025-11-01T00",
+                                      end_time="2025-11-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #8445 obs
+
+
+Oct_2025<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2025-10-01T00",
+                                      end_time="2025-10-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #11988 obs
+
+
+Sep_2025<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2025-09-01T00",
+                                      end_time="2025-09-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #10796 obs
+
+
+Aug_2025<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2025-08-01T00",
+                                      end_time="2025-08-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #11113 obs
+
+
+July_2025<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2025-07-01T00",
+                                      end_time="2025-07-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #10846 obs
+
+
+June_2025<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2025-06-01T00",
+                                      end_time="2025-06-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #10797 obs
+
+
+May_2025<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2025-05-01T00",
+                                      end_time="2025-05-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #10102 obs 
+
+
+April_2025<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2025-04-01T00",
+                                      end_time="2025-04-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #10057 obs
+
+
+March_2025<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2025-03-01T00",
+                                      end_time="2025-03-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #10034 obs
+
+
+Feb_2025<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2025-02-01T00",
+                                      end_time="2025-02-28T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #5743 obs
+
+
+Jan_2025<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2025-01-01T00",
+                                      end_time="2025-01-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #4885 obs
+
+
+#For all months, 2025 data is sparser than 2026 data
+
+EPA_2025_data<-bind_rows(Jan_2025, Feb_2025, March_2025, April_2025, May_2025, June_2025, July_2025, Aug_2025, Sep_2025, Oct_2025, Nov_2025, Dec_2025) #112924 observations
+
+
+rm(Jan_2025, Feb_2025, March_2025, April_2025, May_2025, June_2025, July_2025, Aug_2025, Sep_2025, Oct_2025, Nov_2025, Dec_2025, Jan_2026, Feb_2026, March_2026, April_2026, May_2026, June_2026, July_2026, Aug_2026, Sep_2026, Oct_2026, Nov_1_thru_15_2026)
+
+
+
+
+Dec_2024<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2024-12-01T00",
+                                      end_time="2024-12-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #5068 obs (sparser than Dec 2025)
+
+
+Nov_2024<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2024-11-01T00",
+                                      end_time="2024-11-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #6224 obs (sparser than Nov 2025)
+
+
+Oct_2024<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2024-10-01T00",
+                                      end_time="2024-10-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #8483 obs (sparser than Oct 2025)
+
+
+Sep_2024<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2024-09-01T00",
+                                      end_time="2024-09-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #8159 obs (sparser than Sep 2025)
+
+
+Aug_2024<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2024-08-01T00",
+                                      end_time="2024-08-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #8795 obs (sparser than Aug 2025)
+
+
+July_2024<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2024-07-01T00",
+                                      end_time="2024-07-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #8798 obs (sparser than July 2025)
+
+
+June_2024<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2024-06-01T00",
+                                      end_time="2024-06-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #8532 obs (sparser than June 2025)
+
+
+May_2024<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2024-05-01T00",
+                                      end_time="2024-05-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #8652 obs (sparser than May 2025)
+
+
+April_2024<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2024-04-01T00",
+                                      end_time="2024-04-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #8594 obs (sparser than April 2025)
+
+
+March_2024<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2024-03-01T00",
+                                      end_time="2024-03-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #8678 obs (sparser than March 2025)
+
+
+Feb_2024<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2024-02-01T00",
+                                      end_time="2024-02-29T23", #2024 was a leap year
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #5234 obs (slightly sparser than Feb 2025)
+
+
+Jan_2024<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2024-01-01T00",
+                                      end_time="2024-01-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #4341 obs (slightly sparser than Jan 2025)
+
+EPA_2024_data<-bind_rows(Jan_2024, Feb_2024, March_2024, April_2024, May_2024, June_2024, July_2024, Aug_2024, Sep_2024, Oct_2024, Nov_2024, Dec_2024) #89558 total obs (about 21% sparser overall than 2025)
+
+rm(Jan_2024, Feb_2024, March_2024, April_2024, May_2024, June_2024, July_2024, Aug_2024, Sep_2024, Oct_2024, Nov_2024, Dec_2024)
+
+
+
+Dec_2023<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2023-12-01T00",
+                                      end_time="2023-12-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #3649 obs (sparser than Dec 2024)
+
+
+Nov_2023<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2023-11-01T00",
+                                      end_time="2023-11-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #4661 obs (sparser than Nov 2024)
+
+
+Oct_2023<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2023-10-01T00",
+                                      end_time="2023-10-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #8015 obs (slightly sparser than Oct 2024)
+
+
+Sep_2023<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2023-09-01T00",
+                                      end_time="2023-09-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7734 obs (slightly sparser than Sep 2024)
+
+
+Aug_2023<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2023-08-01T00",
+                                      end_time="2023-08-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #8139 obs (sparser than Aug 2024)
+
+
+July_2023<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2023-07-01T00",
+                                      end_time="2023-07-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7827 obs (sparser than July 2024)
+
+
+June_2023<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2023-06-01T00",
+                                      end_time="2023-06-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7804 obs (sparser than June 2024)
+
+
+May_2023<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2023-05-01T00",
+                                      end_time="2023-05-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #8003 obs (sparser than May 2024)
+
+
+April_2023<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2023-04-01T00",
+                                      end_time="2023-04-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7911 obs (sparser than April 2024)
+
+
+March_2023<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2023-03-01T00",
+                                      end_time="2023-03-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7937 obs (sparser than March 2024)
+
+
+Feb_2023<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2023-02-01T00",
+                                      end_time="2023-02-28T23", 
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #4549 obs (slightly sparser than Feb 2024)
+
+
+Jan_2023<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2023-01-01T00",
+                                      end_time="2023-01-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #3656 obs (sparser thean Jan 2024)
+
+EPA_2023_data<-bind_rows(Jan_2023, Feb_2023, March_2023, April_2023, May_2023, June_2023, July_2023, Aug_2023, Sep_2023, Oct_2023, Nov_2023, Dec_2023) #79885 total observations (about 10.8% sparser overall than 2024 data)
+
+
+rm(Jan_2023, Feb_2023, March_2023, April_2023, May_2023, June_2023, July_2023, Aug_2023, Sep_2023, Oct_2023, Nov_2023, Dec_2023)
+
+
+Dec_2022<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2022-12-01T00",
+                                      end_time="2022-12-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #3587 obs (slightly sparser than Dec 2023)
+
+
+Nov_2022<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2022-11-01T00",
+                                      end_time="2022-11-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #5304 obs (more data than Nov 2023)
+
+
+Oct_2022<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2022-10-01T00",
+                                      end_time="2022-10-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7914 obs (slightly sparser than Oct 2023)
+
+
+Sep_2022<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2022-09-01T00",
+                                      end_time="2022-09-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #6917 obs (sparser than Sep 2023)
+
+
+Aug_2022<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2022-08-01T00",
+                                      end_time="2022-08-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7204 obs (sparser than Aug 2023)
+
+
+July_2022<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2022-07-01T00",
+                                      end_time="2022-07-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7405 obs (slightly sparser than July 2023)
+
+
+June_2022<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2022-06-01T00",
+                                      end_time="2022-06-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7025 obs (sparser than June 2023)
+
+
+May_2022<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2022-05-01T00",
+                                      end_time="2022-05-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7071 obs (sparser than May 2023)
+
+
+April_2022<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2022-04-01T00",
+                                      end_time="2022-04-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7073 obs (sparser than April 2023)
+
+
+March_2022<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2022-03-01T00",
+                                      end_time="2022-03-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7223 obs (sparser than March 2023)
+
+
+Feb_2022<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2022-02-01T00",
+                                      end_time="2022-02-28T23", 
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #3334 obs (sparser than Feb 2023)
+
+
+Jan_2022<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2022-01-01T00",
+                                      end_time="2022-01-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #2872 obs (sparser than Jan 2023)
+
+EPA_2022_data<-bind_rows(Jan_2022, Feb_2022, March_2022, April_2022, May_2022, June_2022, July_2022, Aug_2022, Sep_2022, Oct_2022, Nov_2022, Dec_2022) #72929 total observations (about 8.7% sparser overall than 2023 data)
+
+rm(Jan_2022, Feb_2022, March_2022, April_2022, May_2022, June_2022, July_2022, Aug_2022, Sep_2022, Oct_2022, Nov_2022, Dec_2022)
+
+
+
+
+Dec_2021<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2021-12-01T00",
+                                      end_time="2021-12-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #2649 obs (sparser than Dec 2022)
+
+
+Nov_2021<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2021-11-01T00",
+                                      end_time="2021-11-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #4298 obs (sparser than Nov 2022)
+
+
+Oct_2021<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2021-10-01T00",
+                                      end_time="2021-10-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7199 obs (sparser than Oct 2022)
+
+
+Sep_2021<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2021-09-01T00",
+                                      end_time="2021-09-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #6985 obs (slightly more data than Sep 2022)
+
+
+Aug_2021<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2021-08-01T00",
+                                      end_time="2021-08-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7416 obs (slightly more data than Aug 2022)
+
+
+July_2021<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2021-07-01T00",
+                                      end_time="2021-07-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #6958 obs (sparser than July 2022)
+
+
+June_2021<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2021-06-01T00",
+                                      end_time="2021-06-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #6864 obs (slightly sparser than June 2022)
+
+
+May_2021<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2021-05-01T00",
+                                      end_time="2021-05-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7312 obs (more data than May 2022)
+
+
+April_2021<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2021-04-01T00",
+                                      end_time="2021-04-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7052 obs (very slightly sparser than April 2022)
+
+
+March_2021<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2021-03-01T00",
+                                      end_time="2021-03-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #6770 obs (sparser than March 2022)
+
+
+Feb_2021<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2021-02-01T00",
+                                      end_time="2021-02-28T23", 
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #2956 obs (sparser than Feb 2022)
+
+
+Jan_2021<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2021-01-01T00",
+                                      end_time="2021-01-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #2765 obs (slightly sparser than Jan 2022)
+
+EPA_2021_data<-bind_rows(Jan_2021, Feb_2021, March_2021, April_2021, May_2021, June_2021, July_2021, Aug_2021, Sep_2021, Oct_2021, Nov_2021, Dec_2021) #69224 total observations (about 5.1% sparser overall than 2022)
+
+rm(Jan_2021, Feb_2021, March_2021, April_2021, May_2021, June_2021, July_2021, Aug_2021, Sep_2021, Oct_2021, Nov_2021, Dec_2021)
+
+
+Dec_2020<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2020-12-01T00",
+                                      end_time="2020-12-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #2922 obs (more data than Dec 2021)
+
+
+Nov_2020<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2020-11-01T00",
+                                      end_time="2020-11-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #2511 obs (sparser than Nov 2021)
+
+
+Oct_2020<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2020-10-01T00",
+                                      end_time="2020-10-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7369 obs (slightly more data than Oct 2021)
+
+
+Sep_2020<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2020-09-01T00",
+                                      end_time="2020-09-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #6631 obs (slightly sparser than Sep 2021)
+
+
+Aug_2020<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2020-08-01T00",
+                                      end_time="2020-08-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7305 obs (slightly sparser than Aug 2021)
+
+
+July_2020<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2020-07-01T00",
+                                      end_time="2020-07-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7279 obs (slightly more data than July 2021)
+
+
+June_2020<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2020-06-01T00",
+                                      end_time="2020-06-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #6667 obs (slightly sparser than June 2021)
+
+
+May_2020<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2020-05-01T00",
+                                      end_time="2020-05-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #6914 obs (sparser than May 2021)
+
+
+April_2020<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2020-04-01T00",
+                                      end_time="2020-04-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #6623 obs (sparser than April 2021)
+
+
+March_2020<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2020-03-01T00",
+                                      end_time="2020-03-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #6361 obs (sparser than March 2021)
+
+
+Feb_2020<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2020-02-01T00",
+                                      end_time="2020-02-29T23", #2020 was a leap year
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #2745 obs (slightly sparser than Feb 2021)
+
+
+Jan_2020<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2020-01-01T00",
+                                      end_time="2020-01-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #2732 obs (very slightly sparser than Jan 2021)
+
+EPA_2020_data<-bind_rows(Jan_2020, Feb_2020, March_2020, April_2020, May_2020, June_2020, July_2020, Aug_2020, Sep_2020, Oct_2020, Nov_2020, Dec_2020)
+
+rm(Jan_2020, Feb_2020, March_2020, April_2020, May_2020, June_2020, July_2020, Aug_2020, Sep_2020, Oct_2020, Nov_2020, Dec_2020)
+
+
+
+Dec_2019<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2019-12-01T00",
+                                      end_time="2019-12-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #3350 obs (more data than Dec 2020)
+
+
+Nov_2019<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2019-11-01T00",
+                                      end_time="2019-11-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #6301 obs (much more data than Nov 2020)
+
+
+Oct_2019<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2019-10-01T00",
+                                      end_time="2019-10-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7403 obs (more data than Oct 2020)
+
+
+Sep_2019<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2019-09-01T00",
+                                      end_time="2019-09-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #6943 obs (more data than Sep 2020)
+
+
+Aug_2019<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2019-08-01T00",
+                                      end_time="2019-08-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7242 obs (slightly sparser than Aug 2020)
+
+
+July_2019<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2019-07-01T00",
+                                      end_time="2019-07-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #6634 obs (sparser than July 2020)
+
+June_2019<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2019-06-01T00",
+                                      end_time="2019-06-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7138 obs (more data than June 2020)
+
+
+May_2019<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2019-05-01T00",
+                                      end_time="2019-05-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #6975 obs (slightly more data than May 2020)
+
+
+April_2019<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2019-04-01T00",
+                                      end_time="2019-04-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7086 obs (more data than April 2020)
+
+
+March_2019<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2019-03-01T00",
+                                      end_time="2019-03-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7230 obs (much more data than March 2020)
+
+
+Feb_2019<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2019-02-01T00",
+                                      end_time="2019-02-28T23", 
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #5115 obs (much mopre data than Feb 2020)
+
+
+Jan_2019<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2019-01-01T00",
+                                      end_time="2019-01-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #5567 obs (much more data than Jan 2020)
+
+EPA_2019_data<-bind_rows(Jan_2019, Feb_2019, March_2019, April_2019, May_2019, June_2019, July_2019, Aug_2019, Sep_2019, Oct_2019, Nov_2019, Dec_2019) #76984 total observations (more data than 2020 data, 2021 data, and 2022 data)
+
+rm(Jan_2019, Feb_2019, March_2019, April_2019, May_2019, June_2019, July_2019, Aug_2019, Sep_2019, Oct_2019, Nov_2019, Dec_2019)
+
+
+Dec_2018<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2018-12-01T00",
+                                      end_time="2018-12-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #6484 obs (more data than Dec 2019)
+
+
+Nov_2018<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2018-11-01T00",
+                                      end_time="2018-11-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #6744 obs (more data than Nov 2019)
+
+
+Oct_2018<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2018-10-01T00",
+                                      end_time="2018-10-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7215 obs (sparser than Oct 2019)
+
+
+Sep_2018<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2018-09-01T00",
+                                      end_time="2018-09-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #6712 obs (slightly sparser than Sep 2019)
+
+
+Aug_2018<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2018-08-01T00",
+                                      end_time="2018-08-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7012 obs (slightly sparser than Aug 2019)
+
+
+July_2018<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2018-07-01T00",
+                                      end_time="2018-07-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #6707 obs (slightly more data than July 2019)
+
+June_2018<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2018-06-01T00",
+                                      end_time="2018-06-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #6908 obs (sparser than June 2020)
+
+
+May_2018<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2018-05-01T00",
+                                      end_time="2018-05-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7243 obs (slightly more data than May 2019)
+
+
+April_2018<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2018-04-01T00",
+                                      end_time="2018-04-30T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7070 obs (slightly sparser than April 2019)
+
+
+March_2018<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2018-03-01T00",
+                                      end_time="2018-03-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #7209 obs (slightly sparser than March 2019)
+
+
+Feb_2018<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2018-02-01T00",
+                                      end_time="2018-02-28T23", 
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key()) #5234 obs (slightly more data than Feb 2019)
+
+
+Jan_2018<-get_airnow_monitors(box=c(-87.94009, 41.64458, -87.52509, 42.02295), 
+                                      parameters=c("pm25", "ozone", "pm10"),
+                                      start_time="2018-01-01T00",
+                                      end_time="2018-01-31T23",
+                                      monitor_type="both",
+                                      data_type="both",
+                                      verbose=TRUE,
+                                      raw_concentrations=TRUE,
+                                      clean_names=TRUE,
+                                      api_key = get_airnow_key())
+
+
+EPA_2018_data<-bind_rows(Jan_2018, Feb_2018, March_2018, April_2018, May_2018, June_2018, July_2018, Aug_2018, Sep_2018, Oct_2018, Nov_2018, Dec_2018) #80256 total observations (more data than 2020 data, 2021 data, 2022 data, and 2023 data)
+
+rm(Jan_2018, Feb_2018, March_2018, April_2018, May_2018, June_2018, July_2018, Aug_2018, Sep_2018, Oct_2018, Nov_2018, Dec_2018)
+
+
+EPA_historical_data<-bind_rows(EPA_2018_data, EPA_2019_data, EPA_2020_data, EPA_2021_data, EPA_2022_data, EPA_2023_data, EPA_2024_data, EPA_2025_data, EPA_2026_data) #767963 total observations
+
+
+```
+
+
+The final dataset of historical backfill has 767,963 total observations. However, visual inspection has revealed that not all of these observations are valid. Some observations, especially those in earlier years, contain values of -999.0 for raw and corrected pollutant concentrations, AQI, and AQI category. This is likely a placeholder for NA. 
+
+I investigate how many -999 values exist across all 4 of the aforementioned variables and how many exist for a subset of the variables.
+
+```{r, eval=FALSE}
+
+All_4_variables_NA<-EPA_historical_data%>%
+filter(raw_concentration==-999 | value==-999)
+
+sum(EPA_2018_data$raw_concentration==-999 | EPA_2018_data$value==-999 | EPA_2018_data$aqi==-999 | EPA_2018_data$category_number==-999) #59.1% of 2018 observations have at least one of these variables corrupted
+
+sum(EPA_2019_data$raw_concentration==-999 | EPA_2019_data$value==-999 | EPA_2019_data$aqi==-999 | EPA_2019_data$category_number==-999) #36.1% of 2019 observations
+
+sum(EPA_2020_data$raw_concentration==-999 | EPA_2020_data$value==-999 | EPA_2020_data$aqi==-999 | EPA_2020_data$category_number==-999) #2.5% of 2020 observations
+
+sum(EPA_2021_data$raw_concentration==-999 | EPA_2021_data$value==-999 | EPA_2021_data$aqi==-999 | EPA_2021_data$category_number==-999) #1.6% of 2021 observations
+
+sum(EPA_2022_data$raw_concentration==-999 | EPA_2022_data$value==-999 | EPA_2022_data$aqi==-999 | EPA_2022_data$category_number==-999) #2.2% of 2022 observations
+
+sum(EPA_2023_data$raw_concentration==-999 | EPA_2023_data$value==-999 | EPA_2023_data$aqi==-999 | EPA_2023_data$category_number==-999) #1.1% of 2023 observations
+
+sum(EPA_2024_data$raw_concentration==-999 | EPA_2024_data$value==-999 | EPA_2024_data$aqi==-999 | EPA_2024_data$category_number==-999) #1.9% of 2024 observations
+
+sum(EPA_2025_data$raw_concentration==-999 | EPA_2025_data$value==-999 | EPA_2025_data$aqi==-999 | EPA_2025_data$category_number==-999) #0.97% of 2025 observations
+
+sum(EPA_2026_data$raw_concentration==-999 | EPA_2026_data$value==-999 | EPA_2026_data$aqi==-999 | EPA_2026_data$category_number==-999) #1.05% of 2026 observations as of Nov 15
+
+sum(EPA_historical_data$raw_concentration==-999 & EPA_historical_data$value==-999 & EPA_historical_data$aqi == -999 & EPA_historical_data$category_number==-999 )
+
+
+```
+
+Another useful data exploration is to find the earliest date each sensor reported.
+
+```{r, eval=FALSE}
+
+Earliest_date_by_sensor<-EPA_historical_data%>%
+group_by(site_name)%>%
+summarize(earliest_timestamp=min(datetime_observed))
+
+
+```
+
+8 of the 12 sensors began reporting in 2018. The McCook sensor began reporting in December 2023, CHI_MAYFAIR began reporting in November 2024, CHI_WASH began reporting in January 2025, and Summit began reporting in April 2025. 
+
+
+11/18/26: Adding the EPA historical data and sensor metadata to the database as two new tables
+
+My supervisor advised me to keep rows for which at least one of value or raw_concentration (or both) have a valid measurements, and to not include rows for which both value and raw_concentration are -999. This is very important, as I will include this validation filter when I write the 24 hour update script for the EPA sensors.
+
+```{r, eval=FALSE}
+
+
+EPA_inv_data<-EPA_historical_data%>%
+filter(raw_concentration==-999 & value == -999) 
+nrow(EPA_inv_data) #output of 0
+
+```
+There are no rows for which both value and raw_concentration take on the null/erroneous value of -999, therefore I will add all the historical data to the database.
+
+First, I must separate the API output into historical data and metadata (like the Airgradient and Clarity sensors, there is no separate metadata endpoint; both metadata nad historical data are in the get_airnow_monitors output)
+
+```{r, eval=FALSE}
+
+colnames(EPA_historical_data)
+EPA_historical_readings<-EPA_historical_data%>%
+select(site_name, datetime_observed, parameter, unit, raw_concentration, value, aqi, category_number)
+
+EPA_sensor_information<-EPA_historical_data%>%
+group_by(site_name)%>%
+reframe(latitude=latitude, longitude=longitude, aqs_code=aqs_code, intl_aqs_code=intl_aqs_code, site_agency=site_agency)
+EPA_sensor_metadata<-unique.data.frame(EPA_sensor_information) #Keeps only the unique values of each variable, creating a concise metadata table with the 12 sensors
+
+```
+Turning -999 values into NA values within the historical dataframe so that someone dosen't accidentally interpret them as valid numeric readings (that is a very easily avoidable way to ruin an entire analysis).
+
+```{r, eval=FALSE}
+
+EPA_historical_readings$raw_concentration=ifelse(EPA_historical_readings$raw_concentration==-999, NA, EPA_historical_readings$raw_concentration)
+
+EPA_historical_readings$value=ifelse(EPA_historical_readings$value==-999, NA, EPA_historical_readings$value)
+EPA_historical_readings$aqi=ifelse(EPA_historical_readings$aqi==-999, NA, EPA_historical_readings$aqi)
+EPA_historical_readings$category_number=ifelse(EPA_historical_readings$category_number==-999, NA, EPA_historical_readings$category_number)
+          
+
+
+
+```
+
+
+Extracting the initial last_seen dates for each sensor (as of 11/15, when I downloaded the historical data):
+
+
+```{r, eval=FALSE}
+
+last_seen_per_sensor<-EPA_historical_readings%>%
+group_by(site_name)%>%
+summarize(last_seen=max(datetime_observed))
+
+EPA_sensor_metadata_with_last_seen<-EPA_sensor_metadata%>%
+full_join(last_seen_per_sensor, by=c("site_name"="site_name"))
+
+class(EPA_sensor_metadata_with_last_seen$last_seen)
+
+```
+
+
+Making the historical data and metadata tables (as well as a trigger_pulls table):
+
+```{r, eval=FALSE}
+
+colnames(EPA_sensor_information)
+
+dbExecute(con, "CREATE TABLE EPA_air_history(
+                site_name VARCHAR(50),
+                datetime_observed DATETIME NOT NULL,
+                parameter VARCHAR(50),
+                PRIMARY KEY (site_name, datetime_observed, parameter),  
+                unit VARCHAR (50),
+                raw_concentration DECIMAL (10, 2),
+                value DECIMAL (10, 2),
+                aqi INT,
+                category_number INT)")
+
+#I need site_name, datetime_observed, AND parameter in the composite primary key because each row of the historical data is its own parameter, opening the possibility of a given site_name/datetime_observed combination mapping to multiple rows (a possiblity this avoids). 
+
+dbExecute(con, "CREATE TABLE EPA_sensor_information(
+                site_name VARCHAR(50) PRIMARY KEY,
+                latitude DECIMAL (10, 2),
+                longitude DECIMAL (10, 2),
+                aqs_code BIGINT,
+                intl_aqs_code BIGINT,
+                site_agency VARCHAR(50),
+                last_seen DATETIME NOT NULL)")
+
+
+dbExecute(con, "CREATE TABLE EPA_trigger_pulls(
+                pull_id INT IDENTITY (1,1) PRIMARY KEY,
+                pull_timestamp DATETIME NOT NULL,
+                rows_inserted INT NOT NULL,
+                sensors_processed VARCHAR(MAX) NOT NULL)")
+
+
+
+```
 
 
 
